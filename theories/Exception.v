@@ -60,11 +60,11 @@ Definition Lamᵉ (A : TYPE) (B : forall x : El A, TYPE)
 Definition Prodᵉ (A : TYPE) (B : El A -> TYPE) : TYPE :=
   mkTYPE (forall x : El A, El (B x)).
 
-Definition Lamᵉ (A : TYPE) (B : forall x : El A, TYPE)
+Definition Lamᵉ {A : TYPE} {B : forall x : El A, TYPE}
   (f : forall x : El A, El (B x)) : El (Prodᵉ A B) :=
   mkPack _ true f.
 
-Definition Appᵉ (A : TYPE) (B : forall x : El A, TYPE)
+Definition Appᵉ {A : TYPE} {B : forall x : El A, TYPE}
   (f : El (Prodᵉ A B)) (x : El A) : El (B x) :=
   match f.(wit _) as wit return (if wit then forall x : El A, El (B x) else unit) -> El (B x) with
   | true => fun f => f x
