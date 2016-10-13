@@ -46,7 +46,12 @@ let in_translator : translator_obj -> obj =
 
 let empty_translator = Refmap.empty
 
-let force_translate_constant cst ids =
+let solve_evars env sigma c =
+  let evdref = ref sigma in
+  let c = Typing.e_solve_evars env evdref c in
+  (!evdref, c)
+
+let translate_constant cst ids =
   let id = match ids with
   | None -> translate_name (Nametab.basename_of_global (ConstRef cst))
   | Some [id] -> id
@@ -57,11 +62,13 @@ let force_translate_constant cst ids =
   let env = Global.env () in
   let sigma = Evd.from_env env in
   let (sigma, typ) = ETranslate.translate_type !translator env sigma typ in
+  let (sigma, typ) = solve_evars env sigma typ in
   let sigma, _ = Typing.type_of env sigma typ in
   let _uctx = Evd.evar_universe_context sigma in
   (** Define the term by tactic *)
   let body = Option.get (Global.body_of_constant cst) in
   let (sigma, body) = ETranslate.translate !translator env sigma body in
+  let (sigma, body) = solve_evars env sigma body in
 (*   msg_info (Termops.print_constr body); *)
   let evdref = ref sigma in
   let () = Typing.e_check env evdref body typ in
@@ -73,11 +80,11 @@ let force_translate_constant cst ids =
   let cst_ = Declare.declare_constant id decl in
   [ConstRef cst, ConstRef cst_]
 
-let force_translate gr ids =
+let translate gr ids =
   let r = gr in
   let gr = Nametab.global gr in
   let ans = match gr with
-  | ConstRef cst -> force_translate_constant cst ids
+  | ConstRef cst -> translate_constant cst ids
   | _ -> error "Translation not handled."
   in
   let () = Lib.add_anonymous_leaf (in_translator ans) in
@@ -89,7 +96,7 @@ let force_translate gr ids =
 
 (** Implementation in the forcing layer *)
 
-let force_implement id typ idopt =
+let implement id typ idopt =
   let env = Global.env () in
   let id_ = match idopt with
   | None -> translate_name id
@@ -119,6 +126,6 @@ let force_implement id typ idopt =
 let _ = register_handler begin function
 | ETranslate.MissingGlobal gr ->
   let ref = Nametab.shortest_qualid_of_global Id.Set.empty gr in
-  str "No forcing translation for global " ++ Libnames.pr_qualid ref ++ str "."
+  str "No translation for global " ++ Libnames.pr_qualid ref ++ str "."
 | _ -> raise Unhandled
 end
