@@ -76,3 +76,14 @@ Definition Appᵉ {A : TYPE} {B : forall x : El A, TYPE}
 Check Typeᵉ : El Typeᵉ.
 Check Propᵉ : El Typeᵉ.
 *)
+
+Notation "⌈ A ⌉" := (El A).
+
+Notation "x →ᵉ y" := (Prodᵉ _ (fun (_ : x) => y))
+  (at level 99, y at level 200, right associativity).
+
+Notation "'λᵉ'  x .. y , t" := (Lamᵉ (fun x => .. (Lamᵉ (fun y => t)) ..))
+  (at level 200, x binder, y binder, right associativity).
+
+Notation "'Πᵉ'  x .. y , P" := (Prodᵉ _ (fun x => .. (Prodᵉ _ (fun y => P)) ..))
+  (at level 200, x binder, y binder, right associativity).
