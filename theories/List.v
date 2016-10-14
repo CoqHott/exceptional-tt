@@ -72,3 +72,18 @@ Definition Appᴸ {A : TYPE} {B : forall x : El A, TYPE}
 .
 
 Check eq_refl : (fun A B f x => @Appᴸ A B (Lamᴸ f) x) = (fun A B f x => f x).
+
+Lemma consistent : El (Prodᴸ Typeᴸ (fun A => A)) -> False.
+Proof.
+intros [n F].
+unfold Prodᴸ in F; cbn [val] in F.
+cut ((forall x : Pack (nTYPE Type), El x) -> False).
++ intros H; destruct n.
+  - cbn in F; apply H, F.
+  - destruct F as [F _].
+    cbn in F; apply H, F.
++ clear; intros f.
+  specialize (f (mkPack _ 0 False)).
+  cbn in f.
+  destruct f as [[|] f]; cbn in *; intuition.
+Qed.
