@@ -11,19 +11,24 @@ Inductive nlist (A : Type) :=
 | nil : A -> nlist A
 | cons : A -> nlist A -> nlist A.
 
-Fixpoint hlist (T : nlist Type) := match T with
-| nil _ A => A
-| cons _ A T => prod A (hlist T)
+Fixpoint map {A B} (f : A -> B) (l : nlist A) : nlist B :=
+match l with
+| nil _ x => nil _ (f x)
+| cons _ x l => cons _ (f x) (map f l)
 end.
 
-Fixpoint has_amb (T : nlist Type) := match T with
-| nil _ A => A -> A -> A
-| cons _ A T => prod (A -> A -> A) (has_amb T)
+Fixpoint pointwise {A} (f : A -> Type) (l : nlist A) : Type :=
+match l with
+| nil _ x => f x
+| cons _ x l => prod (f x) (pointwise f l)
 end.
+
+Definition hlist (T : nlist Type) := pointwise (fun A => A) T.
+Definition is_alg (T : nlist Type) := pointwise (fun A => nlist A -> A) T.
 
 Record TYPE := {
   wit : nlist Type;
-  amb : has_amb wit;
+  alg : is_alg wit;
 }.
 
 Definition El (A : TYPE) : Type := hlist A.(wit).
@@ -34,54 +39,59 @@ match l1 with
 | cons _ x l1 => cons _ x (app l1 l2)
 end.
 
-Fixpoint happ (T1 T2 : nlist Type) (amb1 : has_amb T1) (amb2 : has_amb T2) {struct T1} : has_amb (app T1 T2) :=
-match T1 return forall T2, has_amb T1 -> has_amb T2 -> has_amb (app T1 T2) with
-| nil _ A => fun T2 amb1 amb2 => pair amb1 amb2
-| cons _ A T1 => fun T2 amb1 amb2 => pair amb1.(fst) (happ T1 T2 amb1.(snd) amb2)
-end T2 amb1 amb2.
-
-Fixpoint hamb (T : nlist Type) {struct T} : has_amb T -> hlist T -> hlist T -> hlist T :=
-match T return has_amb T -> hlist T -> hlist T -> hlist T with
-| nil _ A => fun f => f
-| cons _ A T => fun f p q => pair (f.(fst) p.(fst) q.(fst)) (hamb T f.(snd) p.(snd) q.(snd))
+Fixpoint bind {A B} (l : nlist A) (f : A -> nlist B) : nlist B :=
+match l with
+| nil _ x => f x
+| cons _ x l => app (f x) (bind l f)
 end.
 
-Fixpoint app2 {T1 T2 : nlist Type} (x : hlist T1) (y : hlist T2) {struct T1} : hlist (app T1 T2) :=
-match T1 return forall T2, hlist T1 -> hlist T2 -> hlist (app T1 T2) with
-| nil _ A => fun T2 x y => pair x y
-| cons _ A T1 => fun T2 x y => pair x.(fst) (app2 x.(snd) y)
-end T2 x y.
+Fixpoint pointwise_app {A} (f : A -> Type) (l1 l2 : nlist A)
+  (p1 : pointwise f l1) (p2 : pointwise f l2) {struct l1} : pointwise f (app l1 l2) :=
+match l1 return forall l2, pointwise f l1 -> _ -> pointwise f (app l1 l2) with
+| nil _ x => fun l2 p1 p2 => pair p1 p2
+| cons _ x l1 => fun l2 p1 p2 => pair p1.(fst) (pointwise_app f l1 l2 p1.(snd) p2)
+end l2 p1 p2.
 
-Definition Typeᶫ : TYPE := {|
+Fixpoint pointwise_alg {T} (f : is_alg T) (l : nlist (hlist T)) : hlist T :=
+match T return is_alg T -> nlist (hlist T) -> hlist T with
+| nil _ A => fun f l => f l
+| cons _ A T => fun f l => pair (f.(fst) (map fst l)) (pointwise_alg f.(snd) (map snd l))
+end f l.
+
+Definition Typeᶫ : TYPE.
+Proof.
+refine {|
   wit := nil _ TYPE;
-  amb := fun T1 T2 =>
-    {| wit := app T1.(wit) T2.(wit); amb := happ _ _ T1.(amb) T2.(amb) |}
+  alg := fun T => {| wit := bind T wit; alg := _ |};
 |}.
+unfold is_alg.
+induction T as [A|A T IHT]; cbn.
++ apply A.(alg).
++ apply pointwise_app; [apply A.(alg)|apply IHT].
+Defined.
 
 Check Typeᶫ : El Typeᶫ.
 
-Definition ambᶫ (A : TYPE) (x y : El A) : El A := hamb A.(wit) A.(amb) x y.
-
 Definition Prodᶫ (A : TYPE) (B : El A -> TYPE) : TYPE := {|
   wit := nil _ (forall x : El A, El (B x));
-  amb := fun f1 f2 x => ambᶫ (B x) (f1 x) (f2 x)
+  alg := fun f x => pointwise_alg (B x).(alg) (map (fun f => f x) f)
 |}.
 
 Definition Lamᶫ {A B} (f : forall x : El A, El (B x)) : El (Prodᶫ A B) := f.
 Definition Appᶫ {A B} (f : El (Prodᶫ A B)) (x : El A) := f x.
 
-Definition boolᶫ : TYPE := {| wit := nil _ (nlist bool); amb := app |}.
+Definition boolᶫ : TYPE := {| wit := nil _ (nlist bool); alg := fun b => bind b (fun b => b) |}.
 Definition trueᶫ : El boolᶫ := nil _ true.
 Definition falseᶫ : El boolᶫ := nil _ false.
 
-Fixpoint bind {A B} (l : nlist A) (f : A -> El B) {struct l} :=
+Fixpoint hbind {A B} (l : nlist A) (f : A -> El B) {struct l} : El B :=
 match l with
 | nil _ x => f x
-| cons _ x l => ambᶫ B (f x) (bind l f)
+| cons _ x l => pointwise_alg B.(alg) (cons _ (f x) (nil _ (hbind l f)))
 end.
 
 Definition bool_caseᶫ (P : TYPE) (Pt : El P) (Pf : El P) (b : El boolᶫ) : El P :=
-  bind b (fun b => if b then Pt else Pf).
+  hbind b (fun b => if b then Pt else Pf).
 
 Check (eq_refl : (fun P Pt Pf => bool_caseᶫ P Pt Pf trueᶫ) = (fun P Pt Pf => Pt)).
 Check (eq_refl : (fun P Pt Pf => bool_caseᶫ P Pt Pf falseᶫ) = (fun P Pt Pf => Pf)).
@@ -91,7 +101,7 @@ Definition bool_recᶫ (P : El boolᶫ -> TYPE)
 Proof.
 induction b as [be|be b IHb]; cbn in *.
 + destruct be; [exact Pt|exact Pf].
-+ refine (app2 _ IHb).
++ refine (pointwise_app _ _ _ _ IHb).
   destruct be; [exact Pt|exact Pf].
 Defined.
 

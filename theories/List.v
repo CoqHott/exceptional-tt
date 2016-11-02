@@ -87,3 +87,9 @@ cut ((forall x : Pack (nTYPE Type), El x) -> False).
   cbn in f.
   destruct f as [[|] f]; cbn in *; intuition.
 Qed.
+
+Definition boolᴸ : TYPE := mkPack _ 0 bool.
+Definition trueᴸ : El boolᴸ := mkPack _ 0 true.
+Definition falseᴸ : El boolᴸ := mkPack _ 0 false.
+
+Definition bool_caseᴸ 
