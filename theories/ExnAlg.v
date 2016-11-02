@@ -1,7 +1,7 @@
-Axiom E : Type.
-
 Set Universe Polymorphism.
 Set Primitive Projections.
+
+Axiom E : Type.
 
 Record prod A B := pair { fst : A; snd : B }.
 
@@ -95,3 +95,9 @@ Defined.
 
 Check (eq_refl : (fun P Pt Pf => bool_recᶫ P Pt Pf trueᶫ) = (fun P Pt Pf => Pt)).
 Check (eq_refl : (fun P Pt Pf => bool_recᶫ P Pt Pf falseᶫ) = (fun P Pt Pf => Pf)).
+
+Definition Eᶫ : El Typeᶫ :=
+  {| wit := Ok _ E; alg := fun e => match e with Ok _ e => e | Err _ e => e end |}.
+
+Definition fail : El (Prodᶫ Eᶫ (fun _ => Prodᶫ Typeᶫ (fun A => A))) :=
+  fun e A => pointwise_alg A.(alg) (Err _ e).
