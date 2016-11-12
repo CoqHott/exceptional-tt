@@ -32,12 +32,19 @@ Definition Prodᶠ (A : TYPE) (B : El A -> TYPE) : TYPE :=
     (fun ω => forall x : El A, (B x).(elt) ω)
     (fun f => forall x : El A, (B x).(prp) (fun ω => f ω x)).
 
+Notation "A →ᶠ B" := (Prodᶠ A (fun _ => B)) (at level 99, right associativity, B at level 200).
+Notation "'Πᶠ'  x .. y , P" := (Prodᶠ _ (fun x => .. (Prodᶠ _ (fun y => P)) ..))
+  (at level 200, x binder, y binder, right associativity).
+
 Definition Lamᶠ {A B} (f : forall x : El A, El (B x)) : El (Prodᶠ A B).
 Proof.
 unshelve refine (mkPack _ _ _ _).
 + refine (fun ω x => (f x).(elt) ω).
 + refine (fun x => (f x).(prp)).
 Defined.
+
+Notation "'λᶠ'  x .. y , t" := (Lamᶠ (fun x => .. (Lamᶠ (fun y => t)) ..))
+  (at level 200, x binder, y binder, right associativity).
 
 Definition Appᶠ {A B} (f : El (Prodᶠ A B)) (x : El A) : El (B x).
 Proof.
@@ -64,11 +71,8 @@ Definition trueᶠ : El boolᶠ := {| elt := fun _ => true; prp := trueᴿ |}.
 Definition falseᶠ : El boolᶠ := {| elt := fun _ => false; prp := falseᴿ |}.
 
 Definition bool_rectᶠ : El
-  (Prodᶠ
-    (Prodᶠ boolᶠ (fun _ => Typeᶠ)) (fun P =>
-      Prodᶠ (Appᶠ P trueᶠ) (fun _ =>
-        Prodᶠ (Appᶠ P falseᶠ) (fun _ => Prodᶠ boolᶠ (fun b => (Appᶠ P b))))
-  )).
+  (Πᶠ (P : El (boolᶠ →ᶠ Typeᶠ)), Appᶠ P trueᶠ →ᶠ Appᶠ P falseᶠ →ᶠ
+  Πᶠ (b : El boolᶠ), Appᶠ P b).
 Proof.
 apply Lamᶠ; intros P.
 apply Lamᶠ; intros Pt.
