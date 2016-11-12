@@ -13,13 +13,13 @@ Inductive M (A : Type) :=
 | Ok : A -> M A
 | Err : E -> M A.
 
-Fixpoint map {A B} (f : A -> B) (l : M A) : M B :=
+Definition map {A B} (f : A -> B) (l : M A) : M B :=
 match l with
 | Ok _ x => Ok _ (f x)
 | Err _ e => Err _ e
 end.
 
-Fixpoint pointwise {A} (f : A -> Type) (l : M A) : Type :=
+Definition pointwise {A} (f : A -> Type) (l : M A) : Type :=
 match l with
 | Ok _ x => f x
 | Err _ _ => E
@@ -88,7 +88,7 @@ Check (eq_refl : (fun P Pt Pf => bool_caseᶫ P Pt Pf falseᶫ) = (fun P Pt Pf =
 Definition bool_recᶫ (P : El boolᶫ -> TYPE)
   (Pt : El (P trueᶫ)) (Pf : El (P falseᶫ)) (b : El boolᶫ) : El (bool_caseᶫ Typeᶫ (P trueᶫ) (P falseᶫ) b).
 Proof.
-induction b as [be|be b IHb]; cbn in *.
+induction b as [be|be]; cbn in *.
 + destruct be; [exact Pt|exact Pf].
 + exact be.
 Defined.
@@ -101,3 +101,6 @@ Definition Eᶫ : El Typeᶫ :=
 
 Definition fail : El (Prodᶫ Eᶫ (fun _ => Prodᶫ Typeᶫ (fun A => A))) :=
   fun e A => pointwise_alg A.(alg) (Err _ e).
+
+Goal El (Prodᶫ Typeᶫ (fun A => A)).
+compute.
