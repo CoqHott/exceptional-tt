@@ -4,22 +4,22 @@ Module TestSuite.
 
 Definition foo := fun (A : Type) (x : A) => x.
 
-Exception Translate foo.
+Effect Translate foo.
 
 Definition bar := fun (A B : Type) (f : A -> A -> B) (x : A) => f x x.
 
-Exception Translate bar.
+Effect Translate bar.
 
 End TestSuite.
 
 Ltac val := refine (mkPack _ true _).
 
-Exception Definition abort : forall A, A.
+Effect Definition abort : forall A, A.
 Proof.
 refine (mkPack _ false tt).
 Defined.
 
-Exception Definition pure : forall A, A -> Type.
+Effect Definition pure : forall A, A -> Type.
 Proof.
 val; intros A.
 val; intros a.
@@ -31,7 +31,7 @@ destruct A as [[|] A]; cbn in *.
 + exact False.
 Defined.
 
-Exception Definition foo : (forall A B : Type, A -> B -> A).
+Effect Definition foo : (forall A B : Type, A -> B -> A).
 Proof.
 val; intros A.
 val; intros B.
