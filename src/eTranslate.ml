@@ -48,23 +48,12 @@ let dummy = mkProp
 
 (** Handling of globals *) 
 
-let get_inductive fctx ind =
-  let gr = IndRef ind in
-  let gr_ =
-    try Refmap.find gr fctx.translator.refs
+let apply_global env sigma gr =
+  let gr =
+    try Refmap.find gr env.translator.refs
     with Not_found -> raise (MissingGlobal gr)
   in
-  match gr_ with
-  | IndRef ind_ -> ind_
-  | _ -> assert false
-
-let apply_global env sigma gr u fctx =
-  (** FIXME *)
-  let p' =
-    try Refmap.find gr fctx.translator.refs
-    with Not_found -> raise (MissingGlobal gr)
-  in
-  let (sigma, c) = Evd.fresh_global env sigma p' in
+  let (sigma, c) = Evd.fresh_global env.env_tgt sigma gr in
   (sigma, c)
 
 let mkHole env sigma =
@@ -139,13 +128,17 @@ let rec otranslate env sigma c = match kind_of_term c with
   let r = mkApp (te, Array.rev_of_list argse) in
   (sigma, r)
 | Var id ->
-  assert false
-| Const (p, u) ->
-  assert false
-| Ind (ind, u) ->
-  assert false
-| Construct (c, u) ->
-  assert false
+  let (sigma, c) = apply_global env sigma (VarRef id) in
+  (sigma, c)
+| Const (p, _) ->
+  let (sigma, c) = apply_global env sigma (ConstRef p) in
+  (sigma, c)
+| Ind (ind, _) ->
+  let (sigma, c) = apply_global env sigma (IndRef ind) in
+  (sigma, c)
+| Construct (c, _) ->
+  let (sigma, c) = apply_global env sigma (ConstructRef c) in
+  (sigma, c)
 | Case (ci, r, c, p) ->
   assert false
 | Fix f -> assert false

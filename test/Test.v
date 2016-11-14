@@ -17,9 +17,11 @@ refine (ret (exist _ _ E _)).
 refine (fun e => match e with Ok _ e => e | Err _ e => e end).
 Defined.
 
-(*
 Effect Definition abort : E -> forall A, A using Exception.
 Proof.
-refine (fun _ => _).
+refine (fun e A => hzero e).
 Defined.
-*)
+
+Definition quz := foo Type Type.
+
+Effect Translate quz using Exception.

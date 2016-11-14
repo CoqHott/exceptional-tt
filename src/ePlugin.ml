@@ -112,7 +112,6 @@ let translate_constant (eff, translator) cst ids =
   [ConstRef cst, ConstRef cst_]
 
 let translate eff gr ids =
-  let r = gr in
   let gr = Nametab.global gr in
   let (eff, translator) = get_translator eff in
   let ans = match gr with
