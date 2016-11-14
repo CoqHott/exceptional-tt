@@ -1,89 +1,74 @@
-Declare ML Module "exception".
+Require Import Effects.
 
 Set Universe Polymorphism.
 Set Primitive Projections.
 
-Record Pack (A : bool -> Type) := mkPack {
-  wit : bool;
-  val : A wit;
-}.
+Axiom E : Type.
 
-Definition TYPE := Pack (fun b => if b return Type then Type else unit).
+Inductive M (A : Type) :=
+| Ok : A -> M A
+| Err : E -> M A.
 
-Definition El (T : TYPE) : Type :=
-match T.(wit _) as wit return (if wit then Type else unit) -> Type with
-| true => fun T => Pack (fun b => if b then T else unit)
-| false => fun _ => unit
-end T.(val _).
+Definition ret {A} (x : A) := Ok _ x.
 
-Definition empty (A : TYPE) : El A.
+Definition map {A B} (f : A -> B) (l : M A) : M B :=
+match l with
+| Ok _ x => Ok _ (f x)
+| Err _ e => Err _ e
+end.
+
+Definition pointwise {A} (f : A -> Type) (l : M A) : Type :=
+match l with
+| Ok _ x => f x
+| Err _ _ => unit
+end.
+
+Fixpoint bind {A B} (l : M A) (f : A -> M B) : M B :=
+match l with
+| Ok _ x => f x
+| Err _ e => Err _ e
+end.
+
+(** Those are derived constructions. TODO: implement me automagically *)
+
+Definition TYPE := M (sig Type (fun A => M A -> A)).
+
+Definition El (A : TYPE) : Type := pointwise wit A.
+
+(** To be defined *)
+
+Definition hzero {A} : E -> El A :=
+match A return E -> El A with
+| Ok _ (exist _ _ A alg) => fun e => alg (Err _ e)
+| Err _ _ => fun _ => tt
+end.
+
+Definition hbind {A} {B : TYPE} (x : M A) (f : A -> El B) : El B :=
+match x with
+| Ok _ x => f x
+| Err _ e => hzero e
+end.
+
+(** More derived stuff *)
+
+Definition Typeᵉ : TYPE.
 Proof.
-unfold El.
-destruct A as [[|] A]; cbn.
-refine (mkPack _ false tt).
-exact tt.
+refine (ret (exist _ _ TYPE _)).
+refine (fun T => bind T (fun A => A)).
 Defined.
 
-Definition mkTYPE (A : Type) : TYPE := mkPack (fun b => if b then Type else unit) true A.
+(* Check Typeᵉ : El Typeᵉ. *)
 
-Definition Typeᵉ : TYPE := mkTYPE Type.
-Definition Setᵉ : TYPE := mkTYPE Set.
-Definition Propᵉ : TYPE := mkTYPE Prop.
-
-Definition Prod₀ᵉ (A B : TYPE) : TYPE := mkTYPE (El A -> El B).
-
-Definition Lam₀ᵉ (A B : TYPE) (f : El A -> El B) : El (Prod₀ᵉ A B) :=
-  mkPack _ true f.
-
-Definition App₀ᵉ (A B : TYPE) (f : El (Prod₀ᵉ A B)) (x : El A) : El B :=
-match f.(wit _) as wit return (if wit then El A -> El B else unit) -> El B with
-| true => fun f => f x
-| false => fun _ => empty B
-end f.(val _)
-.
-
-(*
-Definition Prodᵉ (A : TYPE) (B : El (Prod₀ᵉ A Typeᵉ)) : TYPE :=
-  mkTYPE (
-    forall x : El A,
-      match B.(wit _) as wit return (if wit then El A -> TYPE else unit) -> Type with
-      | true => fun B => El (B x)
-      | false => fun _ => unit
-      end B.(val _)
-  ).
-
-Definition Lamᵉ (A : TYPE) (B : forall x : El A, TYPE)
-  (f : forall x : El A, El (B x)) : El (Prodᵉ A (mkPack _ true B)) :=
-  mkPack _ true f.
-*)
-
-Definition Prodᵉ (A : TYPE) (B : El A -> TYPE) : TYPE :=
-  mkTYPE (forall x : El A, El (B x)).
-
-Definition Lamᵉ {A : TYPE} {B : forall x : El A, TYPE}
-  (f : forall x : El A, El (B x)) : El (Prodᵉ A B) :=
-  mkPack _ true f.
-
-Definition Appᵉ {A : TYPE} {B : forall x : El A, TYPE}
-  (f : El (Prodᵉ A B)) (x : El A) : El (B x) :=
-  match f.(wit _) as wit return (if wit then forall x : El A, El (B x) else unit) -> El (B x) with
-  | true => fun f => f x
-  | false => fun _ => empty (B x)
-  end f.(val _)
-.
-
-(*
-Check Typeᵉ : El Typeᵉ.
-Check Propᵉ : El Typeᵉ.
-*)
+Definition Prodᵉ (A : TYPE) (B : El A -> TYPE) : TYPE.
+Proof.
+refine (ret (exist _ _ (forall x : El A, El (B x)) _)).
+refine (fun f x => hbind f (fun f => f x)).
+Defined.
 
 Notation "⌈ A ⌉" := (El A).
 
 Notation "x →ᵉ y" := (Prodᵉ _ (fun (_ : x) => y))
   (at level 99, y at level 200, right associativity).
-
-Notation "'λᵉ'  x .. y , t" := (Lamᵉ (fun x => .. (Lamᵉ (fun y => t)) ..))
-  (at level 200, x binder, y binder, right associativity).
 
 Notation "'Πᵉ'  x .. y , P" := (Prodᵉ _ (fun x => .. (Prodᵉ _ (fun y => P)) ..))
   (at level 200, x binder, y binder, right associativity).

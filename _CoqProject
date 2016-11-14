@@ -8,6 +8,7 @@ src/ePlugin.mli
 src/g_exception.ml4
 src/exception.mlpack
 
+theories/Effects.v
 theories/Exception.v
 
 test/Test.v

@@ -1,3 +1,4 @@
+open Util
 open Context
 open Names
 open Term
@@ -6,8 +7,15 @@ open Environ
 open Globnames
 open Pp
 
-type translator = global_reference Refmap.t
 exception MissingGlobal of global_reference
+exception MissingPrimitive of global_reference
+
+type effect = ModPath.t
+
+type translator = {
+  effs : effect;
+  refs : global_reference Refmap.t;
+}
 
 type context = {
   translator : translator;
@@ -27,21 +35,14 @@ let push_def na (c, ce) (t, te) env = { env with
 
 (** Coq-defined values *)
 
-let exception_path =
-  let dp = ["Exception"; "Exception"] in
-  let dp = DirPath.make (List.rev_map Id.of_string dp) in
-  ModPath.MPfile dp
+let make_kn eff name =
+  KerName.make2 eff (Label.make name)
 
-let make_kn name =
-  KerName.make2 exception_path (Label.make name)
-
-let prop_e = Constant.make1 (make_kn "Propᵉ")
-let set_e = Constant.make1 (make_kn "Setᵉ")
-let type_e = Constant.make1 (make_kn "Typeᵉ")
-let prod_e = Constant.make1 (make_kn "Prodᵉ")
-let lambda_e = Constant.make1 (make_kn "Lamᵉ")
-let app_e = Constant.make1 (make_kn "Appᵉ")
-let el_e = Constant.make1 (make_kn "El")
+let prop_e eff = ConstRef (Constant.make1 (make_kn eff "Propᵉ"))
+let set_e eff = ConstRef (Constant.make1 (make_kn eff "Setᵉ"))
+let type_e eff = ConstRef (Constant.make1 (make_kn eff "Typeᵉ"))
+let prod_e eff = ConstRef (Constant.make1 (make_kn eff "Prodᵉ"))
+let el_e eff = ConstRef (Constant.make1 (make_kn eff "El"))
 
 let dummy = mkProp
 
@@ -50,7 +51,7 @@ let dummy = mkProp
 let get_inductive fctx ind =
   let gr = IndRef ind in
   let gr_ =
-    try Refmap.find gr fctx.translator
+    try Refmap.find gr fctx.translator.refs
     with Not_found -> raise (MissingGlobal gr)
   in
   match gr_ with
@@ -60,7 +61,7 @@ let get_inductive fctx ind =
 let apply_global env sigma gr u fctx =
   (** FIXME *)
   let p' =
-    try Refmap.find gr fctx.translator
+    try Refmap.find gr fctx.translator.refs
     with Not_found -> raise (MissingGlobal gr)
   in
   let (sigma, c) = Evd.fresh_global env sigma p' in
@@ -73,71 +74,70 @@ let mkHole env sigma =
   let Sigma (c, sigma, _) = Evarutil.new_evar env sigma typ in
   (Sigma.to_evar_map sigma, c)
 
-(** Forcing translation core *)
+let fresh_global env sigma global =
+  let gr = global env.translator.effs in
+  try Evd.fresh_global env.env_tgt sigma gr
+  with Not_found -> raise (MissingPrimitive gr)
+
+(** Effect translation core *)
+
+let element env sigma c =
+  let (sigma, el) = fresh_global env sigma el_e in
+  (sigma, mkApp (el, [|c|]))
 
 let rec otranslate env sigma c = match kind_of_term c with
 | Rel n ->
   (sigma, mkRel n)
 | Sort (Prop Null) ->
-  let (sigma, c) = Evd.fresh_constant_instance env.env_tgt sigma prop_e in
-  (sigma, mkConstU c)
+  let (sigma, c) = fresh_global env sigma prop_e in
+  (sigma, c)
 | Sort (Prop Pos) ->
-  let (sigma, c) = Evd.fresh_constant_instance env.env_tgt sigma set_e in
-  (sigma, mkConstU c)
+  let (sigma, c) = fresh_global env sigma set_e in
+  (sigma, c)
 | Sort (Type _) ->
-  let (sigma, c) = Evd.fresh_constant_instance env.env_tgt sigma type_e in
-  (sigma, mkConstU c)
+  let (sigma, c) = fresh_global env sigma type_e in
+  (sigma, c)
 | Cast (c, k, t) ->
-  assert false
-| Prod (na, t, u) ->
-  let (sigma, p) = Evd.fresh_constant_instance env.env_tgt sigma prod_e in
-  let (sigma, el) = Evd.fresh_constant_instance env.env_tgt sigma el_e in
+  let (sigma, ce) = otranslate env sigma c in
   let (sigma, te) = otranslate env sigma t in
-  let el_te = mkApp (mkConstU el, [|te|]) in
-  let env = push_assum na (t, el_te) env in
+  let (sigma, tTe) = element env sigma te in
+  let r = mkCast (ce, k, tTe) in
+  (sigma, r)
+| Prod (na, t, u) ->
+  let (sigma, p) = fresh_global env sigma prod_e in
+  let (sigma, te) = otranslate env sigma t in
+  let (sigma, tTe) = element env sigma te in
+  let env = push_assum na (t, tTe) env in
   let (sigma, ue) = otranslate env sigma u in
-  let p = mkConstU p in
-  let ue = mkLambda (na, el_te, ue) in
+  let ue = mkLambda (na, tTe, ue) in
   let r = mkApp (p, [|te; ue|]) in
   (sigma, r)
 | Lambda (na, t, u) ->
-  let (sigma, p) = Evd.fresh_constant_instance env.env_tgt sigma lambda_e in
-  let (sigma, el) = Evd.fresh_constant_instance env.env_tgt sigma el_e in
+  let (sigma, el) = fresh_global env sigma el_e in
   let (sigma, te) = otranslate env sigma t in
-  let el_te = mkApp (mkConstU el, [|te|]) in
+  let el_te = mkApp (el, [|te|]) in
   let env = push_assum na (t, el_te) env in
   let (sigma, ue) = otranslate env sigma u in
-  let ue = mkLambda (na, el_te, ue) in
-  let uT = Retyping.get_type_of env.env_src sigma u in
-  let (sigma, uTe) = otranslate env sigma uT in
-  let uTe = mkLambda (na, el_te, uTe) in
-  let r = mkApp (mkConstU p, [|te; uTe; ue|]) in
+  let r = mkLambda (na, el_te, ue) in
   (sigma, r)
 | LetIn (na, c, t, u) ->
-  let (sigma, el) = Evd.fresh_constant_instance env.env_tgt sigma el_e in
+  let (sigma, el) = fresh_global env sigma el_e in
   let (sigma, ce) = otranslate env sigma c in
   let (sigma, te) = otranslate env sigma t in
-  let el_te = mkApp (mkConstU el, [|te|]) in
+  let el_te = mkApp (el, [|te|]) in
   let env = push_def na (c, ce) (t, el_te) env in
   let (sigma, ue) = otranslate env sigma u in
   let r = mkLetIn (na, ce, el_te, ue) in
   (sigma, r)
 | App (t, args) ->
   let (sigma, te) = otranslate env sigma t in
-  let fold (sigma, r, re) arg =
-(*     let (sigma, el) = Evd.fresh_constant_instance env.env_tgt sigma el_e in *)
-    let (sigma, app) = Evd.fresh_constant_instance env.env_tgt sigma app_e in
-(*     let argT = Retyping.get_type_of env.env_src sigma arg in *)
-(*     let (sigma, argTe) = otranslate env sigma arg in *)
+  let fold (sigma, argse) arg =
     let (sigma, arge) = otranslate env sigma arg in
-    let r = mkApp (r, [|t|]) in
-    let (sigma, h0) = mkHole env.env_tgt sigma in
-    let (sigma, h1) = mkHole env.env_tgt sigma in
-    let re = mkApp (mkConstU app, [|h0; h1; re; arge|]) in
-    (sigma, r, re)
+    (sigma, arge :: argse)
   in
-  let (sigma, _, re) = Array.fold_left fold (sigma, t, te) args in
-  (sigma, re)
+  let (sigma, argse) = Array.fold_left fold (sigma, []) args in
+  let r = mkApp (te, Array.rev_of_list argse) in
+  (sigma, r)
 | Var id ->
   assert false
 | Const (p, u) ->
@@ -170,9 +170,9 @@ let translate_type translator env sigma c =
     env_src = env;
     env_tgt = env;
   } in
-  let (sigma, el) = Evd.fresh_constant_instance env.env_tgt sigma el_e in
+  let (sigma, el) = fresh_global env sigma el_e in
   let (sigma, ce) = otranslate env sigma c in
-  (sigma, mkApp (mkConstU el, [|ce|]))
+  (sigma, mkApp (el, [|ce|]))
 
 let translate_context translator env sigma ctx =
   assert false

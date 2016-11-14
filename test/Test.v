@@ -1,40 +1,25 @@
+Require Import Effects.
 Require Import Exception.
 
-Module TestSuite.
+Declare Effect Exception.
 
 Definition foo := fun (A : Type) (x : A) => x.
 
-Effect Translate foo.
+Effect Translate foo using Exception.
 
 Definition bar := fun (A B : Type) (f : A -> A -> B) (x : A) => f x x.
 
-Effect Translate bar.
+Effect Translate bar using Exception.
 
-End TestSuite.
-
-Ltac val := refine (mkPack _ true _).
-
-Effect Definition abort : forall A, A.
+Effect Definition E : Type using Exception.
 Proof.
-refine (mkPack _ false tt).
+refine (ret (exist _ _ E _)).
+refine (fun e => match e with Ok _ e => e | Err _ e => e end).
 Defined.
 
-Effect Definition pure : forall A, A -> Type.
+(*
+Effect Definition abort : E -> forall A, A using Exception.
 Proof.
-val; intros A.
-val; intros a.
-val; cbn.
-destruct A as [[|] A]; cbn in *.
-+ destruct a as [[|] a].
-  - exact True.
-  - exact False.
-+ exact False.
+refine (fun _ => _).
 Defined.
-
-Effect Definition foo : (forall A B : Type, A -> B -> A).
-Proof.
-val; intros A.
-val; intros B.
-val; intros a.
-val; intros b.
-Abort.
+*)
