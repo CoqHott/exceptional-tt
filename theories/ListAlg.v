@@ -81,12 +81,21 @@ Defined.
 
 Check Typeᶫ : El Typeᶫ.
 
+Definition pointwise_app {A} (f : A -> Type) (l1 l2 : nlist A)
+  (p1 : pointwise f l1) (p2 : pointwise f l2) : pointwise f (app l1 l2) :=
+(fix F l1 := match l1 return pointwise f l1 -> pointwise f (app l1 l2) with
+| nil _ x => fun p1 => pair p1 p2
+| cons _ x l1 => fun p1 => pair p1.(fst) (F l1 p1.(snd))
+end) l1 p1.
+
+(*
 Fixpoint pointwise_app {A} (f : A -> Type) (l1 l2 : nlist A)
   (p1 : pointwise f l1) (p2 : pointwise f l2) {struct l1} : pointwise f (app l1 l2) :=
 match l1 return forall l2, pointwise f l1 -> _ -> pointwise f (app l1 l2) with
 | nil _ x => fun l2 p1 p2 => pair p1 p2
 | cons _ x l1 => fun l2 p1 p2 => pair p1.(fst) (pointwise_app f l1 l2 p1.(snd) p2)
 end l2 p1 p2.
+*)
 
 Fixpoint pbind {A} {B : A -> El Typeᶫ} (l : nlist A) (f : forall x : A, El (B x)) {struct l} : El (hbind l B) :=
 match l return El (hbind l B) with
@@ -133,23 +142,6 @@ Inductive nat_ :=
 | O_ : nat_
 | S_ : nlist nat_ -> nat_.
 
-(*
-Fixpoint nat__rect (P : nat_ -> Type) (Q : nlist nat_ -> Type)
-  (pO : P O_) (pS : forall n, Q n -> P (S_ n))
-  (qnil : forall n, P n -> Q (nil _ n))
-  (qcons : forall n l, P n -> Q l -> Q (cons _ n l))
-  n : P n :=
-match n return P n with
-| O_ => pO
-| S_ n =>
-  pS n ((fix F l :=
-    match l return Q l with
-    | nil _ n => qnil n (nat__rect P Q pO pS qnil qcons n)
-    | cons _ n l => qcons n l (nat__rect P Q pO pS qnil qcons n) (F l)
-    end) n)
-end.
-*)
-
 Definition natᶫ : TYPE := mkTYPE (nlist nat_) (fun l => bind l (fun n => n)).
 
 Definition Oᶫ : El natᶫ := ret O_.
@@ -164,10 +156,25 @@ Defined.
 Check (eq_refl : (fun P P0 PS n => nat_caseᶫ P P0 PS Oᶫ) = (fun P P0 PS n => P0)).
 Check (eq_refl : (fun P P0 PS n => nat_caseᶫ P P0 PS (Sᶫ n)) = (fun P P0 PS n => PS n (nat_caseᶫ P P0 PS n))).
 
-Definition θ_nat (R : TYPE) (n : El natᶫ) : (El natᶫ -> El R) -> El R :=
-  nat_caseᶫ ((natᶫ →ᶫ R) →ᶫ R) (fun k => k Oᶫ) (fun _ r k => r (fun n => k (Sᶫ n))) n.
+Definition θ_nat (n : El natᶫ) : (El natᶫ -> El Typeᶫ) -> El Typeᶫ :=
+  nat_caseᶫ ((natᶫ →ᶫ Typeᶫ) →ᶫ Typeᶫ) (fun k => k Oᶫ) (fun _ r k => r (fun n => k (Sᶫ n))) n.
 
-Definition nat_rectᶫ (P : El natᶫ -> TYPE) (P0 : El (P Oᶫ)) (PS : forall n : El natᶫ, El (P n) -> El (P (Sᶫ n))) (n : El natᶫ) :
-  El (θ_nat Typeᶫ n P).
+Definition pbind' {A R}
+  {B : A -> El (R  →ᶫ Typeᶫ)}
+  (l : nlist A) (r : El R) (f : forall x : A, El (B x r)) : El (hbind l B r) :=
+(fix F l := match l return El (hbind l B r) with
+| nil _ x => f x
+| cons _ x l => @pointwise_app _ wit (B x r) (hbind l B r) (f x) (F l)
+end) l.
+
+Definition nat_rectᶫ (P : El natᶫ -> TYPE) (P0 : El (P Oᶫ)) (PS : forall n : El natᶫ, El (θ_nat n P) -> El (θ_nat (Sᶫ n) P)) (n : El natᶫ) :
+  El (θ_nat n P).
 Proof.
-Admitted.
+refine (pbind' n _ (fun n => _)).
+match goal with [ |- El (?X n P) ] => set (K := X) end.
+refine ((fix F n := match n return El (K n P) with O_ => P0 | S_ n => PS n _ end) n).
+refine (@pbind' nat_ (Πᶫ _ : El natᶫ, Typeᶫ) _ n P F).
+Defined.
+
+Check (eq_refl : (fun P P0 PS n => nat_rectᶫ P P0 PS Oᶫ) = (fun P P0 PS n => P0)).
+Check (eq_refl : (fun P P0 PS n => nat_rectᶫ P P0 PS (Sᶫ n)) = (fun P P0 PS n => PS n (nat_rectᶫ P P0 PS n))).
