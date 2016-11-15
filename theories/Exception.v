@@ -3,7 +3,11 @@ Require Import Effects.
 Set Universe Polymorphism.
 Set Primitive Projections.
 
-Axiom E : Type.
+Module Type S.
+Axiom E@{i} : Type@{i}.
+End S.
+
+Module Make(Import M : S).
 
 Inductive M (A : Type) :=
 | Ok : A -> M A
@@ -72,3 +76,5 @@ Notation "x →ᵉ y" := (Prodᵉ _ (fun (_ : x) => y))
 
 Notation "'Πᵉ'  x .. y , P" := (Prodᵉ _ (fun x => .. (Prodᵉ _ (fun y => P)) ..))
   (at level 200, x binder, y binder, right associativity).
+
+End Make.
