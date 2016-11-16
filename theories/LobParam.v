@@ -133,37 +133,7 @@ Defined.
 Eval compute in fun A x => Appᶠ (Appᶠ predᶠ A) (Appᶠ (Appᶠ nextᶠ A) x).
 Eval compute in fun A x => Appᶠ (Appᶠ nextᶠ A) (Appᶠ (Appᶠ predᶠ A) x).
 
+(*
 Definition fixᶠ : El (Πᶠ (A : El Typeᶠ), (A →ᶠ Appᶠ laterᶠ A) →ᶠ A).
 Proof.
-apply Lamᶠ; intros A.
-apply Lamᶠ; intros f.
-unshelve refine (
-  mkPack _ _
-    (fun ω => _)
-    _
-  ).
-+ cbn; induction ω.
-  - exact tt.
-  -
-
-
-Definition fixᶠ : El (Πᶠ (A : El Typeᶠ), (Appᶠ laterᶠ A →ᶠ A) →ᶠ A).
-Proof.
-apply Lamᶠ; intros A.
-apply Lamᶠ; intros f.
-unfold El.
-unshelve refine (
-  mkPack (elt A) _
-    (fun ω => _)
-    _
-  ).
-+
-  pose (f.(elt) ω).
-cbn in *.
-unfold Appᶠ, El in x.
-cbn in *.
-admit.
-+
-  induction ω as [|ω].
-
-cbn in *.
+*

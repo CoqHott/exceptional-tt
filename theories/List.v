@@ -91,5 +91,3 @@ Qed.
 Definition boolᴸ : TYPE := mkPack _ 0 bool.
 Definition trueᴸ : El boolᴸ := mkPack _ 0 true.
 Definition falseᴸ : El boolᴸ := mkPack _ 0 false.
-
-Definition bool_caseᴸ 

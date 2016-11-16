@@ -175,10 +175,6 @@ Section Indep.
 
 Variable A : TYPE.
 
-Goal El (Prodᶫ (Prodᶫ A (fun _ => Falseᶫ)) (fun _ => Falseᶫ)).
-Proof.
-compute.
-
 Variable B : El boolᶫ -> TYPE.
 
 Variable e : E.
@@ -198,27 +194,13 @@ destruct p as [b y].
 refine (exist b (fun _ => y)).
 Defined.
 
+(*
+Not true :
 Lemma indep_pure : is_pure _ indep.
 Proof.
-intros f pf.
-cbn in *.
-unfold indep.
-set (k := fun _ : El A => fail e Falseᶫ).
-specialize (pf k).
-set (p := f k) in *; clearbody p; clear f.
-cbn in *.
-destruct p as [[b y]|e'].
-cbn in *.
-
-clearbody p; clear f.
-destruct p as [[b y]|e'].
-cbn in *.
-admit.
-Qed.
+*)
 
 End Indep.
-
-
 
 Lemma consistency : forall f : El (Prodᶫ Typeᶫ (fun A => A)), is_pure _ f -> False.
 Proof.
