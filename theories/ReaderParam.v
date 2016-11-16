@@ -150,6 +150,10 @@ destruct e as [e eᴿ]; induction eᴿ.
 apply Prefl.
 Defined.
 
+Inductive Falseᴿ : (Ω -> False) -> Type :=.
+
+Definition Falseᶠ := mkTYPE (fun _ => False) Falseᴿ.
+
 (** Playing with types *)
 
 Definition Propᶠ := mkTYPE (fun _ => Prop) (fun A => (forall ω : Ω, A ω) -> Prop).
@@ -192,6 +196,12 @@ Proof.
 unshelve refine (mkPack _ _ (fun ω => _) (fun _ => True)); cbn.
 refine ((fix F n := match n with 0 => False | 1 => True | S (S n) => F n end) (to_nat ω)).
 Defined.
+
+Lemma not_commut : forall A : El Typeᶠ, (El A -> False) -> El (A →ᶠ Falseᶠ).
+Proof.
+intros A f.
+apply Lamᶠ; intros x; elim (f x).
+Qed.
 
 Lemma neg_propext : El (Πᶠ (A B : El Propᶠ),
   i (i A i→ᶠ B) →ᶠ i (i B i→ᶠ A) →ᶠ eqᶠ · Propᶠ · A · B) -> False.
