@@ -25,6 +25,12 @@ Definition Typeᶠ : TYPE :=
 
 Check Typeᶠ : El Typeᶠ.
 
+Definition mkTYPE (A : Ω -> Type) (Aᴿ : (forall ω : Ω, A ω) -> Type) : El Typeᶠ :=
+  mkPack (fun (_ : Ω) => Type) (fun A => (forall ω : Ω, A ω) -> Type) A Aᴿ.
+
+Definition mkEl (A : TYPE) (x : forall ω, A.(elt) ω) (xᴿ : A.(prp) x) : El A :=
+  mkPack _ _ x xᴿ.
+
 Definition Prodᶠ (A : TYPE) (B : El A -> TYPE) : TYPE :=
   mkPack
     (fun (_ : Ω) => Type)
@@ -56,6 +62,8 @@ Defined.
 Eval compute in eq_refl : (fun A B f x => Appᶠ (@Lamᶠ A B f) x) = (fun A B f x => f x).
 Eval compute in eq_refl : (fun A B f => @Lamᶠ A B (fun x => Appᶠ f x)) = (fun A B f => f).
 
+Notation "t · u" := (Appᶠ t u) (at level 11, left associativity).
+
 Definition Ωᶠ : TYPE := {| elt := fun _ => Ω; prp := fun _ => unit |}.
 
 Definition readᶠ : El Ωᶠ := mkPack _ _ (fun ω => ω) tt.
@@ -71,8 +79,8 @@ Definition trueᶠ : El boolᶠ := {| elt := fun _ => true; prp := trueᴿ |}.
 Definition falseᶠ : El boolᶠ := {| elt := fun _ => false; prp := falseᴿ |}.
 
 Definition bool_rectᶠ : El
-  (Πᶠ (P : El (boolᶠ →ᶠ Typeᶠ)), Appᶠ P trueᶠ →ᶠ Appᶠ P falseᶠ →ᶠ
-  Πᶠ (b : El boolᶠ), Appᶠ P b).
+  (Πᶠ (P : El (boolᶠ →ᶠ Typeᶠ)), P · trueᶠ →ᶠ P · falseᶠ →ᶠ
+  Πᶠ (b : El boolᶠ), P · b).
 Proof.
 apply Lamᶠ; intros P.
 apply Lamᶠ; intros Pt.
@@ -87,7 +95,124 @@ end
 Defined.
 
 Eval compute in eq_refl :
-  (fun P Pt Pf => Appᶠ (Appᶠ (Appᶠ ((Appᶠ bool_rectᶠ) P) Pt) Pf) trueᶠ) = (fun P Pt Pf => Pt).
-
+  (fun P Pt Pf => bool_rectᶠ · P · Pt · Pf · trueᶠ) = (fun P Pt Pf => Pt).
 Eval compute in eq_refl :
-  (fun P Pt Pf => Appᶠ (Appᶠ (Appᶠ ((Appᶠ bool_rectᶠ) P) Pt) Pf) falseᶠ) = (fun P Pt Pf => Pf).
+  (fun P Pt Pf => bool_rectᶠ · P · Pt · Pf · falseᶠ) = (fun P Pt Pf => Pf).
+
+Inductive natᵀ :=
+| Oᵀ : natᵀ
+| Sᵀ : (Ω -> natᵀ) -> natᵀ.
+
+Inductive natᴿ : (Ω -> natᵀ) -> Type :=
+| Oᴿ : natᴿ (fun _ => Oᵀ)
+| Sᴿ : forall n, natᴿ n -> natᴿ (fun _ => Sᵀ n).
+
+Definition natᶠ : TYPE := {| prp := natᴿ |}.
+
+Definition Oᶠ : El natᶠ := {| prp := Oᴿ |}.
+Definition Sᶠ : El (natᶠ →ᶠ natᶠ) :=
+  Lamᶠ (fun n : El natᶠ => mkPack _ natᶠ.(prp) (fun ω => Sᵀ n.(elt)) (Sᴿ n.(elt) n.(prp))).
+
+Definition nat_rectᶠ : El (
+  (Πᶠ (P : El (natᶠ →ᶠ Typeᶠ)), P · Oᶠ →ᶠ (Πᶠ (n : El natᶠ), P · n →ᶠ P · (Sᶠ · n)) →ᶠ
+  Πᶠ (n : El natᶠ), P · n)).
+Proof.
+apply Lamᶠ; intros P.
+apply Lamᶠ; intros P0.
+apply Lamᶠ; intros PS.
+apply Lamᶠ; intros n.
+destruct n as [n nᴿ]; induction nᴿ; cbn.
++ apply P0.
++ refine (PS · (mkPack _ _ n nᴿ) · IHnᴿ).
+Defined.
+
+Check (eq_refl : (fun P P0 PS n => nat_rectᶠ · P · P0 · PS · Oᶠ) = (fun P P0 PS n => P0)).
+Check (eq_refl : (fun P P0 PS n => nat_rectᶠ · P · P0 ·  PS · (Sᶠ · n)) = (fun P P0 PS n => PS · n · (nat_rectᶠ · P · P0 · PS · n))).
+
+Inductive eqᵀ (A : TYPE) (x : El A) : El A -> Type :=
+| reflᵀ : eqᵀ A x x.
+
+Inductive eqᴿ (A : TYPE) (x : El A) : forall y, (Ω -> eqᵀ A x y) -> Type :=
+| reflᴿ : eqᴿ A x x (fun _ => reflᵀ A x).
+
+Definition eqᶠ : El (Πᶠ (A : El Typeᶠ), A →ᶠ A →ᶠ Typeᶠ) :=
+  λᶠ (A : El Typeᶠ) x y, mkTYPE (fun _ => eqᵀ A x y) (eqᴿ A x y).
+
+Definition reflᶠ : El (Πᶠ (A : El Typeᶠ) (x : El A), eqᶠ · A · x · x) :=
+  λᶠ (A : El Typeᶠ) x, mkEl (eqᶠ · A · x · x) (fun _ => reflᵀ A x) (reflᴿ A x).
+
+Definition eq_rectᶠ : El (
+  Πᶠ (A : El Typeᶠ) (x : El A) (P : El (Πᶠ (y : El A), eqᶠ · A · x · y →ᶠ Typeᶠ)),
+  P · x · (reflᶠ · A · x) →ᶠ Πᶠ (y : El A) (e : El (eqᶠ · A · x · y)), P · y · e).
+Proof.
+refine (λᶠ A x P Prefl y e, _).
+destruct e as [e eᴿ]; induction eᴿ.
+apply Prefl.
+Defined.
+
+(** Playing with types *)
+
+Definition Propᶠ := mkTYPE (fun _ => Prop) (fun A => (forall ω : Ω, A ω) -> Prop).
+
+(** Impredicative product *)
+Definition iProdᶠ (A : TYPE) (B : El A -> El Propᶠ) : El Propᶠ :=
+  mkPack
+    (fun (_ : Ω) => Prop)
+    (fun A => (forall ω : Ω, A ω) -> Prop)
+    (fun ω => forall x : El A, (B x).(elt) ω)
+    (fun f => forall x : El A, (B x).(prp) (fun ω => f ω x)).
+
+Definition i (A : El Propᶠ) : El Typeᶠ := mkTYPE A.(elt) A.(prp).
+
+Notation "A i→ᶠ B" := (iProdᶠ A (fun _ => B)) (at level 99, right associativity, B at level 200).
+
+Section NegPropext.
+
+Variable Ω_is_nat : Ω = nat.
+
+Definition of_nat := match Ω_is_nat in _ = A return A -> Ω with eq_refl => fun x => x end.
+Definition to_nat := match Ω_is_nat in _ = A return Ω -> A with eq_refl => fun x => x end.
+
+Lemma cast_id : forall n, to_nat (of_nat n) = n.
+Proof.
+intros n.
+compute.
+destruct Ω_is_nat.
+reflexivity.
+Qed.
+
+Definition P₀ : El Propᶠ.
+Proof.
+unshelve refine (mkPack _ _ (fun ω => _) (fun _ => True)); cbn.
+refine ((fix F n := match n with 0 => True | 1 => False | S (S n) => F n end) (to_nat ω)).
+Defined.
+
+Definition P₁ : El Propᶠ.
+Proof.
+unshelve refine (mkPack _ _ (fun ω => _) (fun _ => True)); cbn.
+refine ((fix F n := match n with 0 => False | 1 => True | S (S n) => F n end) (to_nat ω)).
+Defined.
+
+Lemma neg_propext : El (Πᶠ (A B : El Propᶠ),
+  i (i A i→ᶠ B) →ᶠ i (i B i→ᶠ A) →ᶠ eqᶠ · Propᶠ · A · B) -> False.
+Proof.
+intros F.
+apply elt with (ω := of_nat 0) in F.
+specialize (F P₀ P₁); cbn in *.
+cut (eqᵀ Propᶠ P₀ P₁ -> False); [intros f; apply f; clear f; apply F|]; clear F.
++ unshelve refine (mkPack _ _ _ _).
+  - intros ω e.
+    pose (c := e.(elt) (of_nat 1)); clearbody c.
+    cbn in c; rewrite cast_id in c; elim c.
+  - cbn; intros _; exact I.
++ unshelve refine (mkPack _ _ _ _).
+  - intros ω e.
+    pose (c := e.(elt) (of_nat 0)); clearbody c.
+    cbn in c; rewrite cast_id in c; elim c.
+  - cbn; intros _; exact I.
++ intros e; assert (rw : P₀ = P₁) by (destruct e; reflexivity); clear e.
+  apply f_equal with (f := fun P => elt P (of_nat 0)) in rw.
+  revert rw; cbn.
+  rewrite cast_id.
+  intros []; exact I.
+Qed.
