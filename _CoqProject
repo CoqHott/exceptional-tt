@@ -9,6 +9,6 @@ src/g_exception.ml4
 src/exception.mlpack
 
 theories/Effects.v
-theories/Exception.v
+theories/exception/Exception.v
 
 test/Test.v
