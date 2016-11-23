@@ -1,5 +1,5 @@
 Require Import Effects.
-Require Import Exception.
+Require Import exception.Eff.
 
 Set Universe Polymorphism.
 
