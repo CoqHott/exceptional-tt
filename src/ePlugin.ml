@@ -79,8 +79,13 @@ let solve_evars env sigma c =
   (!evdref, c)
 
 let get_translator eff =
-  let eff = Nametab.locate_module (snd (Libnames.qualid_of_reference eff)) in
-  (eff, MPmap.find eff !translator)
+  let fail () = errorlabstrm ""
+    (str "Effect " ++ Libnames.pr_reference eff ++ str " not found")
+  in
+  let (_, qid) = Libnames.qualid_of_reference eff in
+  let eff = try Nametab.locate_module qid with Not_found -> fail () in
+  let data = try MPmap.find eff !translator with Not_found -> fail () in
+  (eff, data)
 
 let translate_constant (eff, translator) cst ids =
   let id = match ids with
