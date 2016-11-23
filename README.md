@@ -20,6 +20,11 @@ The terms must satisfy a few definitional equations, namely:
 - `pointwise A P (ret A t) ≡ P t`
 - `hbind A B (ret A t) f ≡ f t`
 
+# Compilation
+
+This requires Coq 8.6. If the `COQBIN` variable is correctly set, a `make`
+invokation should be enough.
+
 # Use of the plugin
 
 An effect is described by any module `EFF` containing the above definitions. It
