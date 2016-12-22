@@ -1,7 +1,9 @@
 Set Universe Polymorphism.
 Set Primitive Projections.
 Unset Printing Primitive Projection Compatibility.
-Axiom Ω : Type.
+
+Inductive Ω :=.
+(* Axiom Ω : Type. *)
 
 Inductive unit := tt.
 
@@ -76,23 +78,6 @@ Inductive Falseᴿ : M False -> Type :=.
 Definition Falseᶠ : TYPE :=
   exist _ _ (ret (False -> Ω)) (IsType _ Falseᴿ).
 
-Definition squash : El (Typeᶠ →ᶠ Typeᶠ).
-Proof.
-refine (λᶠ A, _).
-unshelve refine (exist _ _ (ret (C A)) (IsType _ _)).
-unshelve refine (fun _ => unit).
-Defined.
-
-Lemma cc : El (Πᶠ (A B : El Typeᶠ), ((A →ᶠ squash · B) →ᶠ A) →ᶠ squash · A).
-Proof.
-refine (λᶠ A B f, _).
-simple refine (exist _ _ (fun ω => _) _).
-+ unshelve refine ((f).(wit) (exist _ _ _ _)); [|refine ω].
-  unshelve refine (exist _ _ (fun k => (k.(wit).(wit) ω)) _).
-  refine (fun _ => tt).
-+ refine tt.
-Defined.
-
 Inductive boolᴿ : M bool -> Type :=
 | trueᴿ : boolᴿ (ret true)
 | falseᴿ : boolᴿ (ret false).
@@ -120,3 +105,59 @@ Eval compute in eq_refl :
   (fun P Pt Pf => bool_rectᶠ · P · Pt · Pf · trueᶠ) = (fun P Pt Pf => Pt).
 Eval compute in eq_refl :
   (fun P Pt Pf => bool_rectᶠ · P · Pt · Pf · falseᶠ) = (fun P Pt Pf => Pf).
+
+Definition squash : El (Typeᶠ →ᶠ Typeᶠ).
+Proof.
+refine (λᶠ A, _).
+unshelve refine (exist _ _ (ret (C A)) (IsType _ _)).
+unshelve refine (fun _ => unit).
+Defined.
+
+Notation "[[ A ]]" := (squash · A).
+
+Definition inhabits : El (Πᶠ (A : El Typeᶠ), A →ᶠ [[ A ]]).
+Proof.
+refine (λᶠ A x, _).
+unshelve refine (exist _ _ x.(wit) tt).
+Defined.
+
+Lemma cc : El (Πᶠ (A B : El Typeᶠ), ((A →ᶠ [[ B ]]) →ᶠ A) →ᶠ [[ A ]]).
+Proof.
+refine (λᶠ A B f, _).
+simple refine (exist _ _ (fun ω => _) _).
++ unshelve refine ((f).(wit) (exist _ _ _ _)); [|refine ω].
+  unshelve refine (exist _ _ (fun k => (k.(wit).(wit) ω)) _).
+  refine (fun _ => tt).
++ refine tt.
+Defined.
+
+Lemma squash_consistency : El ([[ Falseᶠ ]]) -> False.
+Proof.
+refine (fun e => match e.(wit) (False_rect _) with end).
+Defined.
+
+Definition squash_bool_caseᶠ :
+  El (Πᶠ (P : El Typeᶠ) (Pt : El [[ P ]]) (Pf : El [[ P ]]) (b : El [[ boolᶠ ]]), [[ P ]]).
+Proof.
+unshelve refine (λᶠ P Pt Pf b, exist _ _ (fun ω => _) _).
++ refine (b.(wit) (fun b => match b with true => Pt.(wit) ω | false => Pf.(wit) ω end)).
++ exact tt.
+Defined.
+
+(* Not true : we would need extensional unit types *)
+(* Check (eq_refl : (fun P Pt Pf => squash_bool_caseᶠ · P · Pt · Pf · (inhabits · boolᶠ · trueᶠ)) = (fun P Pt Pf => Pt)). *)
+(* Check (eq_refl : (fun P Pt Pf => squash_bool_caseᶠ · P · Pt · Pf · (inhabits · boolᶠ · falseᶠ)) = (fun P Pt Pf => Pf)). *)
+
+Lemma squash_bool_caseᶠ_true :
+  forall P Pt Pf, squash_bool_caseᶠ · P · Pt · Pf · (inhabits · boolᶠ · trueᶠ) = Pt.
+Proof.
+intros P Pt Pf; compute.
+destruct Pt as [? [ ] ]; reflexivity.
+Defined.
+
+Lemma squash_bool_caseᶠ_false :
+  forall P Pt Pf, squash_bool_caseᶠ · P · Pt · Pf · (inhabits · boolᶠ · falseᶠ) = Pf.
+Proof.
+intros P Pt Pf; compute.
+destruct Pf as [? [ ] ]; reflexivity.
+Defined.
