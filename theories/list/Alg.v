@@ -183,6 +183,47 @@ Defined.
 Check (eq_refl : (fun P P0 PS n => nat_rectᶫ P P0 PS Oᶫ) = (fun P P0 PS n => P0)).
 Check (eq_refl : (fun P P0 PS n => nat_rectᶫ P P0 PS (Sᶫ n)) = (fun P P0 PS n => PS n (nat_rectᶫ P P0 PS n))).
 
+Inductive list_ (A : TYPE) :=
+| nil_ : list_ A
+| cons_ : El A -> nlist (list_ A) -> list_ A.
+
+Definition listᶫ : El (Typeᶫ →ᶫ Typeᶫ) :=
+  fun A => mkTYPE (nlist (list_ A)) (fun l => bind l (fun n => n)).
+
+Definition nilᶫ : El (Πᶫ (A : El Typeᶫ), listᶫ A) := fun A => ret (nil_ A).
+Definition consᶫ : El (Πᶫ (A : El Typeᶫ), A →ᶫ listᶫ A →ᶫ listᶫ A) :=
+  fun A x l => ret (cons_ A x l).
+
+Definition list_caseᶫ : El (Πᶫ (A : El Typeᶫ) (P : El Typeᶫ) (P0 : El P) (PS : El (A →ᶫ listᶫ A →ᶫ P →ᶫ P)) (l : El (listᶫ A)), P).
+Proof.
+intros A P P0 PS l.
+refine (hbind l (fun l => _)).
+refine ((fix F n := match n return El P with nil_ _ => P0 | cons_ _ x l => PS x l (hbind l F) end) l).
+Defined.
+
+Check (eq_refl : (fun A P P0 PS => list_caseᶫ A P P0 PS (nilᶫ A)) = (fun A P P0 PS => P0)).
+Check (eq_refl : (fun A P P0 PS x l => list_caseᶫ A P P0 PS (consᶫ A x l)) = (fun A P P0 PS x l => PS x l (list_caseᶫ A P P0 PS l))).
+
+Definition θ_list : El (Πᶫ (A : El Typeᶫ), listᶫ A →ᶫ (listᶫ A →ᶫ Typeᶫ) →ᶫ Typeᶫ) :=
+  fun A l k => list_caseᶫ A ((listᶫ A →ᶫ Typeᶫ) →ᶫ Typeᶫ) (fun k => k (nilᶫ A)) (fun x _ r k => r (fun l => k (consᶫ A x l))) l k.
+
+Definition list_rectᶫ : El (Πᶫ
+    (A : El Typeᶫ) (P : El (listᶫ A →ᶫ Typeᶫ))
+    (P0 : El (P (nilᶫ A)))
+    (PS : El (Πᶫ (x : El A) (l : El (listᶫ A)), θ_list A l P →ᶫ θ_list A (consᶫ A x l) P))
+    (l : El (listᶫ A)),
+      θ_list A l P).
+Proof.
+intros A P P0 PS l.
+refine (pbind' l _ (fun l => _)).
+match goal with [ |- El (?X l P) ] => set (K := X) end.
+refine ((fix F l := match l return El (K l P) with nil_ _ => P0 | cons_ _ x l => PS x l _ end) l).
+refine (@pbind' (list_ A) (Πᶫ _ : El (listᶫ A), Typeᶫ) _ l P F).
+Defined.
+
+Check (eq_refl : (fun A P P0 PS => list_rectᶫ A P P0 PS (nilᶫ A)) = (fun A P P0 PS => P0)).
+Check (eq_refl : (fun A P P0 PS x l => list_rectᶫ A P P0 PS (consᶫ A x l)) = (fun A P P0 PS x l => PS x l (list_rectᶫ A P P0 PS l))).
+
 (** Proving that linear terms commute with storage operators *)
 
 Inductive box (A : TYPE) := Box : El A -> box A.
@@ -330,4 +371,4 @@ cbn; clear n.
   assert (Hnl := HP (cons _ (Box natᶫ (ret n)) (Boxᶫ natᶫ l))).
   cbn in Hnl. rewrite Hnl; clear Hnl.
   f_equal; [apply IHn, HP|apply IHl, HP].
-Qed.
+Abort.
