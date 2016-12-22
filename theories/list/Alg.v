@@ -224,6 +224,51 @@ Defined.
 Check (eq_refl : (fun A P P0 PS => list_rectᶫ A P P0 PS (nilᶫ A)) = (fun A P P0 PS => P0)).
 Check (eq_refl : (fun A P P0 PS x l => list_rectᶫ A P P0 PS (consᶫ A x l)) = (fun A P P0 PS x l => PS x l (list_rectᶫ A P P0 PS l))).
 
+Inductive eq_ (A : El Typeᶫ) (x : El A) : El A -> Type :=
+| refl_ : eq_ A x x.
+
+Definition eqᶫ : El (Πᶫ (A : El Typeᶫ), A →ᶫ A →ᶫ Typeᶫ) :=
+  fun A x y => mkTYPE (nlist (eq_ A x y)) (fun l => bind l (fun n => n)).
+
+Definition reflᶫ : El (Πᶫ (A : El Typeᶫ) (x : El A), eqᶫ A x x) :=
+  fun A x => ret (refl_ A x).
+
+Definition eq_caseᶫ : El (
+  Πᶫ (A : El Typeᶫ) (x : El A) (P : El (A →ᶫ Typeᶫ)),
+  P x →ᶫ Πᶫ (y : El A), eqᶫ A x y →ᶫ P y).
+Proof.
+intros A x P p y e.
+refine (hbind e (fun e => _)).
+refine (eq__rect A x (fun y _ => El (P y)) p y e).
+Defined.
+
+Check (eq_refl : (fun A x P p => eq_caseᶫ A x P p x (reflᶫ A x)) = (fun A x P p => p)).
+
+Definition θ_eq : El (
+  Πᶫ (A : El Typeᶫ) (x : El A) (y : El A),
+    eqᶫ A x y →ᶫ (Πᶫ (y : El A), eqᶫ A x y →ᶫ Typeᶫ) →ᶫ Typeᶫ
+  ) :=
+  fun A x y e =>
+    eq_caseᶫ A x (fun y => (Πᶫ (y : El A), eqᶫ A x y →ᶫ Typeᶫ) →ᶫ Typeᶫ) (fun k => k x (reflᶫ A x)) _ e.
+
+Definition eq_rectᶫ : El (
+  Πᶫ (A : El Typeᶫ) (x : El A)
+    (P : El (Πᶫ (y : El A), eqᶫ A x y →ᶫ Typeᶫ))
+    (Prefl : El (P x (reflᶫ A x)))
+    (y : El A) (e : El (eqᶫ A x y)),
+    θ_eq A x y e P
+).
+Proof.
+refine (fun A x P prefl y e => _).
+unfold θ_eq, eq_caseᶫ.
+refine (
+@pbind' (eq_ A x y) _ _ e _ (fun e => _)
+).
+destruct e; exact prefl.
+Defined.
+
+Check (eq_refl : (fun A x P p => eq_rectᶫ A x P p x (reflᶫ A x)) = (fun A x P p => p)).
+
 (** Proving that linear terms commute with storage operators *)
 
 Inductive box (A : TYPE) := Box : El A -> box A.
