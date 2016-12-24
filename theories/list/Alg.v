@@ -144,8 +144,8 @@ Definition θ_bool (n : El boolᶫ) : (El boolᶫ -> El Typeᶫ) -> El Typeᶫ :
   bool_caseᶫ ((boolᶫ →ᶫ Typeᶫ) →ᶫ Typeᶫ) (fun k => k trueᶫ) (fun k => k falseᶫ) n.
 
 Definition bool_recᶫ (P : El boolᶫ -> TYPE)
-  (Pt : El (P trueᶫ)) (Pf : El (P falseᶫ)) (b : El boolᶫ) : El (bool_caseᶫ Typeᶫ (P trueᶫ) (P falseᶫ) b) :=
-  pbind b (bool_rec _ Pt Pf).
+  (Pt : El (P trueᶫ)) (Pf : El (P falseᶫ)) (b : El boolᶫ) : El (θ_bool b P) :=
+  @pbind' bool (boolᶫ →ᶫ Typeᶫ) _ b P (bool_rec _ Pt Pf).
 
 Check (eq_refl : (fun P Pt Pf => bool_recᶫ P Pt Pf trueᶫ) = (fun P Pt Pf => Pt)).
 Check (eq_refl : (fun P Pt Pf => bool_recᶫ P Pt Pf falseᶫ) = (fun P Pt Pf => Pf)).
