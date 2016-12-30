@@ -35,6 +35,14 @@ let push_def na (c, ce) (t, te) env = { env with
 
 (** Coq-defined values *)
 
+let effect_path =
+  DirPath.make (List.map Id.of_string ["Effects"; "Effects"])
+
+let proj1 =
+  let kn = KerName.make2 (MPfile effect_path) (Label.make "wit") in
+  let const = Constant.make1 kn in
+  Projection.make const false
+
 let make_kn eff name =
   KerName.make2 eff (Label.make name)
 
@@ -72,7 +80,7 @@ let fresh_global env sigma global =
 
 let element env sigma c =
   let (sigma, el) = fresh_global env sigma el_e in
-  (sigma, mkApp (el, [|c|]))
+  (sigma, mkProj (proj1, mkApp (el, [|c|])))
 
 let rec otranslate env sigma c = match kind_of_term c with
 | Rel n ->
@@ -102,18 +110,16 @@ let rec otranslate env sigma c = match kind_of_term c with
   let r = mkApp (p, [|te; ue|]) in
   (sigma, r)
 | Lambda (na, t, u) ->
-  let (sigma, el) = fresh_global env sigma el_e in
   let (sigma, te) = otranslate env sigma t in
-  let el_te = mkApp (el, [|te|]) in
+  let (sigma, el_te) = element env sigma te in
   let env = push_assum na (t, el_te) env in
   let (sigma, ue) = otranslate env sigma u in
   let r = mkLambda (na, el_te, ue) in
   (sigma, r)
 | LetIn (na, c, t, u) ->
-  let (sigma, el) = fresh_global env sigma el_e in
   let (sigma, ce) = otranslate env sigma c in
   let (sigma, te) = otranslate env sigma t in
-  let el_te = mkApp (el, [|te|]) in
+  let (sigma, el_te) = element env sigma te in
   let env = push_def na (c, ce) (t, el_te) env in
   let (sigma, ue) = otranslate env sigma u in
   let r = mkLetIn (na, ce, el_te, ue) in
@@ -163,9 +169,9 @@ let translate_type translator env sigma c =
     env_src = env;
     env_tgt = env;
   } in
-  let (sigma, el) = fresh_global env sigma el_e in
   let (sigma, ce) = otranslate env sigma c in
-  (sigma, mkApp (el, [|ce|]))
+  let (sigma, ce) = element env sigma ce in
+  (sigma, ce)
 
 let translate_context translator env sigma ctx =
   assert false

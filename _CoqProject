@@ -1,4 +1,4 @@
--R theories/ Exception
+-R theories/ Effects
 -I src/
 
 src/eTranslate.ml

@@ -35,41 +35,39 @@ end.
 
 (** Those are derived constructions. TODO: implement me automagically *)
 
-Definition TYPE := M (sig Type (fun A => M A -> A)).
+Definition TYPE := sig Type (fun A => M A -> A).
 
-Definition El (A : TYPE) : Type := pointwise wit A.
+Definition El (A : M TYPE) : TYPE :=
+match A with
+| Ok _ X => X
+| Err _ e => exist Type (fun A => M A -> A) unit (fun _ => tt)
+end.
 
 (** To be defined *)
 
-Definition hzero {A} : E -> El A :=
-match A return E -> El A with
-| Ok _ (exist _ _ A alg) => fun e => alg (Err _ e)
-| Err _ _ => fun _ => tt
-end.
-
-Definition hbind {A} {B : TYPE} (x : M A) (f : A -> El B) : El B :=
+Definition hbind {A} {B : M TYPE} (x : M A) (f : A -> (El B).(wit)) : (El B).(wit) :=
 match x with
 | Ok _ x => f x
-| Err _ e => hzero e
+| Err _ e => (El B).(prf) (Err _ e)
 end.
 
 (** More derived stuff *)
 
-Definition Typeᵉ : TYPE.
+Definition Typeᵉ : M TYPE.
 Proof.
-refine (ret (exist _ _ TYPE _)).
+refine (ret (exist _ _ (M TYPE) _)).
 refine (fun T => bind T (fun A => A)).
 Defined.
 
 (* Check Typeᵉ : El Typeᵉ. *)
 
-Definition Prodᵉ (A : TYPE) (B : El A -> TYPE) : TYPE.
+Definition Prodᵉ (A : M TYPE) (B : (El A).(wit) -> M TYPE) : M TYPE.
 Proof.
-refine (ret (exist _ _ (forall x : El A, El (B x)) _)).
+refine (ret (exist _ _ (forall x : (El A).(wit), (El (B x)).(wit)) _)).
 refine (fun f x => hbind f (fun f => f x)).
 Defined.
 
-Notation "⌈ A ⌉" := (El A).
+Notation "⌈ A ⌉" := (El A).(wit).
 
 Notation "x →ᵉ y" := (Prodᵉ _ (fun (_ : x) => y))
   (at level 99, y at level 200, right associativity).

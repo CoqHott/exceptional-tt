@@ -27,7 +27,7 @@ Defined.
 
 Effect Definition abort : E -> forall A, A using Exception.
 Proof.
-refine (fun e A => hzero e).
+refine (fun e A => (El A).(prf) (Err _ e)).
 Defined.
 
 Definition quz := foo Type Type.

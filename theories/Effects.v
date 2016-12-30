@@ -14,4 +14,9 @@ Record sig A (P : A -> Type) := exist {
 Arguments wit {_ _} _.
 Arguments prf {_ _} _.
 
+Definition prod A B := sig A (fun _ => B).
+Definition pair {A B} (x : A) (y : B) := exist _ _ x y.
+Definition fst {A B} (p : prod A B) : A := p.(wit).
+Definition snd {A B} (p : prod A B) : B := p.(prf).
+
 Inductive unit := tt.

@@ -13,10 +13,10 @@ Inductive M (A : Type) :=
 
 Definition ret {A} (x : A) : M A := nil _ x.
 
-Fixpoint pointwise {A} (f : A -> Type) (l : M A) : Type :=
+Fixpoint map {A B} (f : A -> B) (l : M A) : M B :=
 match l with
-| nil _ x => f x
-| cons _ x l => prod (f x) (pointwise f l)
+| nil _ x => nil _ (f x)
+| cons _ x l => cons _ (f x) (map f l)
 end.
 
 Fixpoint app {A} (l1 l2 : M A) :=
@@ -33,20 +33,27 @@ end.
 
 (** Those are derived constructions. TODO: implement me automagically *)
 
-Definition TYPE := M (sig Type (fun A => M A -> A)).
+Definition TYPE := sig Type (fun A => M A -> A).
 
-Definition El (A : TYPE) : Type := pointwise wit A.
+Fixpoint El (A : M TYPE) : TYPE :=
+match A with
+| nil _ X => X
+| cons _ X A =>
+  exist Type (fun A => M A -> A)
+    (prod X.(wit) (El A).(wit))
+      (fun p => pair (X.(prf) (map fst p)) ((El A).(prf) (map snd p)))
+end.
 
 (** To be defined *)
 
-Fixpoint happ {A} : El A -> El A -> El A :=
-match A return El A -> El A -> El A with
+Fixpoint happ {A} : (El A).(wit) -> (El A).(wit) -> (El A).(wit) :=
+match A return (El A).(wit) -> (El A).(wit) -> (El A).(wit) with
 | nil _ A => fun x y => A.(prf) (cons _ x (nil _ y))
 | cons _ A T => fun x y =>
   pair (A.(prf) (cons _ x.(fst) (nil _ y.(fst))))  (happ x.(snd) x.(snd))
 end.
 
-Definition hbind {A B} (l : M A) (f : A -> El B) : El B :=
+Definition hbind {A B} (l : M A) (f : A -> (El B).(wit)) : (El B).(wit) :=
 (fix F l := match l with
 | nil _ x => f x
 | cons _ x l => happ (f x) (F l)
@@ -54,17 +61,17 @@ end) l.
 
 (** More derived stuff *)
 
-Definition Typeᵉ : TYPE.
+Definition Typeᵉ : M TYPE.
 Proof.
-refine (ret (exist _ _ TYPE _)).
+refine (ret (exist _ _ (M TYPE) _)).
 refine (fun T => bind T (fun A => A)).
 Defined.
 
 (* Check Typeᵉ : El Typeᵉ. *)
 
-Definition Prodᵉ (A : TYPE) (B : El A -> TYPE) : TYPE.
+Definition Prodᵉ (A : M TYPE) (B : (El A).(wit) -> M TYPE) : M TYPE.
 Proof.
-refine (ret (exist _ _ (forall x : El A, El (B x)) _)).
+refine (ret (exist _ _ (forall x : (El A).(wit), (El (B x)).(wit)) _)).
 refine (fun f x => hbind f (fun f => f x)).
 Defined.
 
