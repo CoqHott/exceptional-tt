@@ -105,3 +105,18 @@ Definition Eᶫ : [| Typeᶫ |] :=
 
 Definition fail : [| Πᶫ (e : [| Eᶫ |]) (A : [| Typeᶫ |]), A |] :=
   fun e A => (El A).(prf) (inr e).
+
+(** Full dependent elimination because the translation is inconsistent *)
+
+Definition bool_rec_depᶫ : [|
+  Πᶫ (P : [|boolᶫ →ᶫ Typeᶫ|]) (Pt : [|P trueᶫ|]) (Pf : [|P falseᶫ|])
+  (b : [|boolᶫ|]), P b |] :=
+fun P Pt Pf b =>
+match b return [| P b |] with
+| inl true => Pt
+| inl false => Pf
+| inr e => fail e (P (inr e))
+end.
+
+Check (eq_refl : (fun P Pt Pf => bool_rec_depᶫ P Pt Pf trueᶫ) = (fun P Pt Pf => Pt)).
+Check (eq_refl : (fun P Pt Pf => bool_rec_depᶫ P Pt Pf falseᶫ) = (fun P Pt Pf => Pf)).
