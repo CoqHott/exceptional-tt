@@ -75,4 +75,7 @@ Notation "x →ᵉ y" := (Prodᵉ _ (fun (_ : x) => y))
 Notation "'Πᵉ'  x .. y , P" := (Prodᵉ _ (fun x => .. (Prodᵉ _ (fun y => P)) ..))
   (at level 200, x binder, y binder, right associativity).
 
+Definition Free (A : Type) : M TYPE :=
+  ret (exist Type (fun A => M A -> A) (M A) (fun x => bind x (fun x => x))).
+
 End Make.

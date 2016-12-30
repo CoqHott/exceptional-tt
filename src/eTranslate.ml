@@ -53,6 +53,8 @@ let prod_e eff = ConstRef (Constant.make1 (make_kn eff "Prodᵉ"))
 let el_e eff = ConstRef (Constant.make1 (make_kn eff "El"))
 
 let dummy = mkProp
+let free_algebra eff = ConstRef (Constant.make1 (make_kn eff.translator.effs "Free"))
+
 
 (** Handling of globals *) 
 
@@ -153,25 +155,68 @@ let rec otranslate env sigma c = match kind_of_term c with
 | Meta _ -> assert false
 | Evar _ -> assert false
 
+and otranslate_type env sigma t =
+  let (sigma, t_) = otranslate env sigma t in
+  let (sigma, t_) = element env sigma t_ in
+  (sigma, t_)
+
+let otranslate_context env sigma ctx =
+  let open Rel.Declaration in
+  let fold decl (sigma, env, accu) = match decl with
+  | LocalAssum (na, t) ->
+    let (sigma, t_) = otranslate env sigma t in
+    let (sigma, t_) = element env sigma t_ in
+    (sigma, push_assum na (t, t_) env, LocalAssum (na, t_) :: accu)
+  | LocalDef (na, c, t) ->
+    let (sigma, t_) = otranslate env sigma t in
+    let (sigma, t_) = element env sigma t_ in
+    let (sigma, c_) = otranslate env sigma c in
+    (sigma, push_def na (c, c_) (t, t_) env, LocalDef (na, c_, t_) :: accu)
+  in
+  let (sigma, _, ctx) = List.fold_right fold ctx (sigma, env, []) in
+  (sigma, ctx)
+
 (** The toplevel option allows to close over the topmost forcing condition *)
 
-let translate translator env sigma c =
+let make_context translator env sigma =
   let env = {
     translator;
     env_src = env;
     env_tgt = env;
   } in
-  otranslate env sigma c
+  (sigma, env)
 
-let translate_type translator env sigma c =
-  let env = {
-    translator;
-    env_src = env;
-    env_tgt = env;
-  } in
-  let (sigma, ce) = otranslate env sigma c in
-  let (sigma, ce) = element env sigma ce in
-  (sigma, ce)
+let push_context (ctx, ctx_) env =
+  let env_src = Environ.push_rel_context ctx env.env_src in
+  let env_tgt = Environ.push_rel_context ctx_ env.env_tgt in
+  { env with env_src; env_tgt }
 
-let translate_context translator env sigma ctx =
-  assert false
+let translate env sigma c =
+  let (sigma, c_) = otranslate env sigma c in
+  let (sigma, _) = Typing.type_of env.env_tgt sigma c_ in
+  (sigma, c_)
+
+let translate_type env sigma c =
+  let (sigma, c_) = otranslate env sigma c in
+  let (sigma, c_) = element env sigma c_ in
+  let (sigma, _) = Typing.type_of env.env_tgt sigma c_ in
+  (sigma, c_)
+
+let translate_context env sigma ctx =
+  let open Rel.Declaration in
+  let fold decl (sigma, env, accu) = match decl with
+  | LocalAssum (na, t) ->
+    let (sigma, t_) = otranslate env sigma t in
+    let (sigma, t_) = element env sigma t_ in
+    let (sigma, _) = Typing.type_of env.env_tgt sigma t_ in
+    (sigma, push_assum na (t, t_) env, LocalAssum (na, t_) :: accu)
+  | LocalDef (na, c, t) ->
+    let (sigma, t_) = otranslate env sigma t in
+    let (sigma, t_) = element env sigma t_ in
+    let (sigma, _) = Typing.type_of env.env_tgt sigma t_ in
+    let (sigma, c_) = otranslate env sigma c in
+    let (sigma, _) = Typing.type_of env.env_tgt sigma c_ in
+    (sigma, push_def na (c, c_) (t, t_) env, LocalDef (na, c_, t_) :: accu)
+  in
+  let (sigma, _, ctx) = List.fold_right fold ctx (sigma, env, []) in
+  (sigma, ctx)
