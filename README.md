@@ -77,3 +77,7 @@ Nothing interesting yet.
 ## Writer (`M A ~ A × W`)
 
 Nothing interesting yet.
+
+# License
+
+This software is licensed under the WTFPL 2.0.
