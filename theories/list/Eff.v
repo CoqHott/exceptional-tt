@@ -61,11 +61,10 @@ end) l.
 
 (** More derived stuff *)
 
-Definition Typeᵉ : M TYPE.
-Proof.
-refine (ret (exist _ _ (M TYPE) _)).
-refine (fun T => bind T (fun A => A)).
-Defined.
+Definition Free (A : Type) : M TYPE :=
+  ret (exist Type (fun A => M A -> A) (M A) (fun x => bind x (fun x => x))).
+
+Definition Typeᵉ : M TYPE := Free TYPE.
 
 (* Check Typeᵉ : El Typeᵉ. *)
 
@@ -83,5 +82,3 @@ Notation "x →ᵉ y" := (Prodᵉ _ (fun (_ : x) => y))
 Notation "'Πᵉ'  x .. y , P" := (Prodᵉ _ (fun x => .. (Prodᵉ _ (fun y => P)) ..))
   (at level 200, x binder, y binder, right associativity).
 
-Definition Free (A : Type) : M TYPE :=
-  ret (exist Type (fun A => M A -> A) (M A) (fun x => bind x (fun x => x))).

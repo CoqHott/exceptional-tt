@@ -1,24 +1,24 @@
-# Writer-like effects in Coq
+# Self-algebraic effects in Coq
 
 This plugin allows to easily apply an effectful translation to CIC terms.
 The translation is generic over the effect, provided it complies with a few
-requirements, that turn it into what we call a writer-like pseudo-monad (WLPM).
+requirements, that turn it into what we call a self-algebraic pseudo-monad (SAPM).
 
-A WLPM is described by the following terms:
+A SAPM is described by the following terms:
 - `M : Type@{i} -> Type@{i}`
 - `ret : forall A : Type, A -> M A`
 - `bind : forall (A B : Type), M A -> (A -> M B) -> M B`
-- `pointwise : forall (A : Type), (A -> Type) -> M A -> Type`
+- `El : M TYPE -> TYPE`
 - `hbind : forall (A : Type) (B : TYPE), M A -> (A -> El B) -> El B`
+- `pbind : foral (A : Type) (R : M TYPE) (B : A -> El (R  →ᵉ Typeᵉ))
+    (l : M A) (r : El R) (f : forall x : A, El (B x r)), El (hbind A (R  →ᵉ Typeᵉ) l B r)`
 
 where the following data is derived as:
-- `TYPE := M {A : Type & M A -> A}`
-- `El (A : TYPE) := pointwise proj1 A`
+- `TYPE := {A : Type & M A -> A}`
 
 The terms must satisfy a few definitional equations, namely:
-- `bind A B (ret A t) f ≡ f t`
-- `pointwise A P (ret A t) ≡ P t`
 - `hbind A B (ret A t) f ≡ f t`
+- `pbind A B (ret A t) f r ≡ f t r`
 
 # Compilation
 
@@ -27,8 +27,17 @@ invokation should be enough.
 
 # Use of the plugin
 
-An effect is described by any module `EFF` containing the above definitions. It
-must first be declared using the following command:
+An effect is described by any module `EFF` containing the above definitions,
+plus the following constants:
+- `Free : Type -> M TYPE := ret (exist Type (fun A => M A -> A) (M A) (fun x => bind x (fun x => x)))`
+- `Typeᵉ : M TYPE := Free TYPE`
+- `Prodᵉ : forall (A : M TYPE), (B : (El A).(wit) -> M TYPE) -> M TYPE := ...`
+
+Ideally, these constants should be derived from the given self-algebraic structure,
+but for now this is still a TODO.
+
+Before being available, the effect must first be declared using the following
+command:
 
 ```
 Declare Effect EFF.
@@ -55,7 +64,7 @@ completed, an axiom `foo : T` is added to the environment, and a constant
 
 # Examples
 
-The repository contains a few examples of WLPM, some as effects, other
+The repository contains a few examples of SAPM, some as effects, other
 handcoded.
 
 ## Exceptions (`M A ~ A + E`)
