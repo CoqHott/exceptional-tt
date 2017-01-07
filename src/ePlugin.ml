@@ -138,6 +138,11 @@ let sort_of_elim sigma body =
     (sigma, mkSort s)
   else (sigma, mkProp)
 
+let sort_of env sigma c =
+  let evdref = ref sigma in
+  let sort = Typing.e_sort_of env evdref c in
+  (!evdref, sort)
+
 (** From a kernel inductive body construct an entry for the inductive. There
     are slight mismatches in the representation, in particular in the handling
     of contexts. See {!Declarations} and {!Entries}. *)
@@ -160,6 +165,7 @@ let translate_inductive_aux translator ind =
     let (sigma, arity_) = ETranslate.translate_context info sigma arity in
     let arity = Termops.it_mkProd_or_LetIn s arity in
     let arity_ = Termops.it_mkProd_or_LetIn s_ arity_ in
+    let (sigma, _) = Typing.type_of (Environ.push_rel_context params_ env) sigma arity_ in
     (sigma, (arity, arity_, body) :: accu)
   in
   let (sigma, bodies) = Array.fold_right map_ind mib.mind_packets (sigma, []) in
@@ -210,7 +216,9 @@ let translate_inductive_aux translator ind =
       let (sigma, c_) = ETranslate.otranslate hinfo sigma c in
       let c_ = it_mkProd_or_LetIn c_ ctx_ in
       (** Retypecheck for universe constraints *)
-      let (sigma, _) = Typing.type_of (Environ.push_rel_context cparams_ env) sigma c_ in
+      let (sigma, sc) = sort_of (Environ.push_rel_context cparams_ env) sigma c_ in
+      let (_, s_) = Term.destArity arity_ in
+      let sigma = Evd.set_leq_sort Environ.empty_env sigma sc s_ in
       (sigma, c_ :: accu)
     in
     let (sigma, constructors_) = Array.fold_right fold_cstr body.mind_nf_lc (sigma, []) in

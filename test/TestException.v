@@ -36,6 +36,4 @@ Effect Translate quz using Exception.
 
 Effect Translate bool using Exception.
 Effect Translate eq using Exception.
-
-(** FIXME: does not work yet for sordid universe constraints *)
-(* Effect Translate list using Exception. *)
+Effect Translate list using Exception.
