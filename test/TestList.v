@@ -23,3 +23,7 @@ Defined.
 Definition quz := foo Type Type.
 
 (* Effect Translate quz using NonDet. *)
+
+Effect Translate bool using NonDet.
+Effect Translate eq using NonDet.
+Effect Translate list using NonDet.
