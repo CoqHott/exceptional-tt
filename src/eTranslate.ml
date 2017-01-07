@@ -88,8 +88,7 @@ let rec otranslate env sigma c = match kind_of_term c with
 | Rel n ->
   (sigma, mkRel n)
 | Sort (Prop Null) ->
-  let (sigma, c) = fresh_global env sigma prop_e in
-  (sigma, c)
+  CErrors.error ("Prop not handled yet")
 | Sort (Prop Pos) ->
   let (sigma, c) = fresh_global env sigma set_e in
   (sigma, c)
