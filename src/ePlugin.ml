@@ -255,10 +255,13 @@ let translate_inductive_aux translator ind =
     mind_entry_private = mib.mind_private;
   }
 
+let translate_inductive_defs mind =
+  let _ = Declare.declare_mind mind in
+  []
+
 let translate_inductive (eff, translator) ind =
   let mind = translate_inductive_aux translator ind in
-  let (kn, prim) = Declare.declare_mind mind in
-  []
+  translate_inductive_defs mind
 
 let translate eff gr ids =
   let gr = Nametab.global gr in
