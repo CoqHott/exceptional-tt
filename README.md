@@ -65,7 +65,13 @@ completed, an axiom `foo : T` is added to the environment, and a constant
 # Examples
 
 The repository contains a few examples of SAPM, some as effects, other
-handcoded.
+handcoded. Subfolders of the `theory` folder correspond to various instances of
+the effects.
+
+Files named `Eff.v` declare the structure effect to be used by the translator.
+Files named `Alg.v` define instead combinators to play with the translation by
+hand, without having to resort to the plugin. Files name `AlgParam.v` define
+combinators to play with the parametric translation.
 
 ## Exceptions (`M A ~ A + E`)
 
