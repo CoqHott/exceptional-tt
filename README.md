@@ -20,6 +20,9 @@ The terms must satisfy a few definitional equations, namely:
 - `hbind A B (ret A t) f ≡ f t`
 - `pbind A B (ret A t) f r ≡ f t r`
 
+A paper describing this translation in-depth can be found
+[here](https://www.xn--pdrot-bsa.fr/articles/weaning.pdf).
+
 # Compilation
 
 This requires Coq 8.6. If the `COQBIN` variable is correctly set, a `make`
