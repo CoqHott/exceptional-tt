@@ -3,27 +3,25 @@ Require Import list.Eff.
 
 Set Universe Polymorphism.
 
-Module Import NonDet := list.Eff.
-
-Declare Effect NonDet.
+Declare Effect list.Eff.
 
 Definition foo := fun (A : Type) (x : A) => x.
 
-Effect Translate foo using NonDet.
+Effect Translate foo using list.Eff.
 
 Definition bar := fun (A B : Type) (f : A -> A -> B) (x : A) => f x x.
 
-Effect Translate bar using NonDet.
+Effect Translate bar using list.Eff.
 
-Effect Definition amb : forall A, A -> A -> A using NonDet.
+Effect Definition amb : forall A, A -> A -> A using list.Eff.
 Proof.
 refine (fun A => @happ A).
 Defined.
 
 Definition quz := foo Type Type.
 
-(* Effect Translate quz using NonDet. *)
+Effect Translate quz using list.Eff.
 
-Effect Translate bool using NonDet.
-Effect Translate eq using NonDet.
-Effect Translate list using NonDet.
+Effect Translate bool using list.Eff.
+Effect Translate eq using list.Eff.
+Effect Translate list using list.Eff.

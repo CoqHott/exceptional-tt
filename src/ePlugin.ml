@@ -83,6 +83,13 @@ let solve_evars env sigma c =
   let c = Typing.e_solve_evars env evdref c in
   (!evdref, c)
 
+let declare_constant id uctx c t =
+  let ce = Declare.definition_entry ~types:t ~univs:uctx c in
+  let cd = Entries.DefinitionEntry ce in
+  let decl = (cd, IsProof Lemma) in
+  let cst_ = Declare.declare_constant id decl in
+  cst_
+
 let get_translator eff =
   let fail () = errorlabstrm ""
     (str "Effect " ++ Libnames.pr_reference eff ++ str " not found")
@@ -116,20 +123,13 @@ let translate_constant (eff, translator) cst ids =
   let () = Typing.e_check env evdref body typ in
   let sigma = !evdref in
   let (_, uctx) = Evd.universe_context sigma in
-  let ce = Declare.definition_entry ~types:typ ~univs:uctx body in
-  let cd = Entries.DefinitionEntry ce in
-  let decl = (cd, IsProof Lemma) in
-  let cst_ = Declare.declare_constant id decl in
+  let cst_ = declare_constant id uctx body typ in
   [ConstRef cst, ConstRef cst_]
 
 let sort_of_elim sigma body =
   let open Declarations in
   if List.mem Sorts.InType body.mind_kelim then
     let (sigma, s) = Evd.new_sort_variable Evd.univ_flexible sigma in
-    let is_template = match body.mind_arity with
-    | RegularArity _ -> false
-    | TemplateArity _ -> true
-    in
     let sigma =
       if Array.length body.mind_consnames > 1 then
         Evd.set_leq_sort Environ.empty_env sigma (Prop Pos) s
@@ -142,6 +142,12 @@ let sort_of env sigma c =
   let evdref = ref sigma in
   let sort = Typing.e_sort_of env evdref c in
   (!evdref, sort)
+
+let substl_rel_context subst ctx =
+  let ctx = Vars.substl subst (it_mkProd_or_LetIn mkProp ctx) in
+  let (ctx, _) = Term.decompose_prod_assum ctx in
+  ctx
+
 
 (** From a kernel inductive body construct an entry for the inductive. There
     are slight mismatches in the representation, in particular in the handling
@@ -210,8 +216,7 @@ let translate_inductive_aux translator ind =
       let (sigma, indparams) = List.fold_right map_indparams arities_ (sigma, []) in
       (** Leave parameters unchanged, but replace inductives by their free variant *)
       let subst = relparams @ indparams in
-      let ctx_ = Vars.substl subst (it_mkProd_or_LetIn mkProp ctx_) in
-      let (ctx_, _) = Term.decompose_prod_assum ctx_ in
+      let ctx_ = substl_rel_context subst ctx_ in
       let hinfo = ETranslate.push_context (ctx, ctx_) cinfo in
       let (sigma, c_) = ETranslate.otranslate hinfo sigma c in
       let c_ = it_mkProd_or_LetIn c_ ctx_ in
@@ -255,13 +260,87 @@ let translate_inductive_aux translator ind =
     mind_entry_private = mib.mind_private;
   }
 
-let translate_inductive_defs mind =
-  let _ = Declare.declare_mind mind in
-  []
+(** Build the wrapper around an inductive type *)
+let get_inductive_type (eff, translator) ind ind_ i body body_ =
+  let open Declarations in
+  let name = translate_name body.mind_typename in
+  let env = Global.env () in
+  let sigma = Evd.from_env env in
+  let (sigma, info) = ETranslate.make_context translator env sigma in
+  (** From [I] produce [fun params indices => Free (I params indices)] *)
+  let ctx = body_.mind_arity_ctxt in
+  let tenv = Environ.push_rel_context ctx env in
+  let args = List.mapi (fun i _ -> mkRel (i + 1)) ctx in
+  let args = List.rev args in
+  let free = ETranslate.free_algebra info in
+  let (sigma, free) = Evd.fresh_global tenv sigma free in
+  let (sigma, pind) = Evd.fresh_inductive_instance env sigma (ind_, i) in
+  let c_ = applist (mkIndU pind, args) in
+  let c_ = it_mkLambda_or_LetIn (mkApp (free, [|c_|])) ctx in
+  let (sigma, t_) = Typing.type_of env sigma c_ in
+  let (_, uctx) = Evd.universe_context sigma in
+  (name, uctx, c_, t_)
+
+(** Build the wrapper around the constructors of an inductive type *)
+let get_constructors (eff, translator) ind ind_ i body body_ =
+  let open Declarations in
+  let map_constructor j id =
+    let src = (ind, i), succ j in
+    let name = translate_name id in
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let (sigma, info) = ETranslate.make_context translator env sigma in
+    (** FIXME: handle mutual inductives *)
+    let subst = [mkInd (ind_, 0)] in
+    let t_ = Vars.substl subst body_.mind_nf_lc.(j) in
+    let (ctx, concl) = Term.decompose_prod_assum t_ in
+    let (sigma, info) = ETranslate.make_context translator env sigma in
+    let args = List.mapi (fun i _ -> mkRel (i + 1)) ctx in
+    let args = List.rev args in
+    let (sigma, constr) = Evd.fresh_constructor_instance env sigma ((ind_, i), succ j) in
+    let c_ = applist (mkConstructU constr, args) in
+    let (sigma, ret) = Evd.fresh_global env sigma (ETranslate.ret info) in
+    let c_ = mkApp (ret, [| concl; c_ |]) in
+    let c_ = it_mkLambda_or_LetIn c_ ctx in
+    let (sigma, t_) = Typing.type_of env sigma c_ in
+    let (_, uctx) = Evd.universe_context sigma in
+    (src, name, uctx, c_, t_)
+  in
+  Array.to_list (Array.mapi map_constructor body.mind_consnames)
+
+(** Register the wrapping of the inductive type and its constructors *)
+let translate_inductive_defs (eff, translator) ind ind_ mind mind_ =
+  let open Declarations in
+  (** Declare the wrapped inductive types *)
+  let map_types i b b_ = get_inductive_type (eff, translator) ind ind_ i b b_ in
+  let types = Array.map2_i map_types mind.mind_packets mind_.mind_packets in
+  let map_types i (id, uctx, c, t) =
+    let cst_ = declare_constant id uctx c t in
+    (IndRef (ind, i), ConstRef cst_)
+  in
+  let types = Array.to_list (Array.mapi map_types types) in
+  (** Declare the wrapped inductive constructors *)
+  let fold accu (src, tgt) = Refmap.add src tgt accu in
+  let refs = List.fold_left fold translator.ETranslate.refs types in
+  let translator = { translator with ETranslate.refs } in
+  let map_constructors i b b_ = get_constructors (eff, translator) ind ind_ i b b_ in
+  let constructors = Array.map2_i map_constructors mind.mind_packets mind_.mind_packets in
+  let constructors = List.concat (Array.to_list constructors) in
+  let map_constructors (src, id, uctx, c, t) =
+    let cst_ = declare_constant id uctx c t in
+    (ConstructRef src, ConstRef cst_)
+  in
+  let constructors = List.map map_constructors constructors in
+  types @ constructors
 
 let translate_inductive (eff, translator) ind =
-  let mind = translate_inductive_aux translator ind in
-  translate_inductive_defs mind
+  let open Declarations in
+  let (mind, _) = Global.lookup_inductive ind in
+  let mind_ = translate_inductive_aux translator ind in
+  let ((_, kn), _) = Declare.declare_mind mind_ in
+  let ind_ = Global.mind_of_delta_kn kn in
+  let mind_ = Global.lookup_mind ind_ in
+  translate_inductive_defs (eff, translator) (fst ind) ind_ mind mind_
 
 let translate eff gr ids =
   let gr = Nametab.global gr in

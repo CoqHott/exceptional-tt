@@ -53,6 +53,7 @@ let prod_e eff = ConstRef (Constant.make1 (make_kn eff "Prodᵉ"))
 let el_e eff = ConstRef (Constant.make1 (make_kn eff "El"))
 
 let dummy = mkProp
+let ret eff = ConstRef (Constant.make1 (make_kn eff.translator.effs "ret"))
 let free_algebra eff = ConstRef (Constant.make1 (make_kn eff.translator.effs "Free"))
 
 

@@ -28,6 +28,7 @@ val translate_type :
 val translate_context :
   context -> Evd.evar_map -> Context.Rel.t -> Evd.evar_map * Context.Rel.t
 
+val ret : context -> global_reference
 val free_algebra : context -> global_reference
 (** The function producing the free type algebra *)
 
