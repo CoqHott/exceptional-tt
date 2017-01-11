@@ -25,3 +25,20 @@ Effect Translate quz using list.Eff.
 Effect Translate bool using list.Eff.
 Effect Translate eq using list.Eff.
 Effect Translate list using list.Eff.
+Effect Translate sum using list.Eff.
+Effect Translate False using list.Eff.
+Effect Translate sigT using list.Eff.
+Effect Translate Datatypes.prod using list.Eff.
+
+Lemma eq_is_eqᵒ : forall A x y, eqᵒ A x y -> x = y.
+Proof.
+intros A x y e.
+destruct e; reflexivity.
+Qed.
+
+Effect Definition non_standard_bool : {b : bool & Datatypes.prod (b = true -> False) (b = false -> False) } using list.Eff.
+Proof.
+refine (ret _).
+exists (list.Eff.cons _ trueᵒ (list.Eff.nil _ falseᵒ)).
+refine (ret _); constructor; intros e; destruct e as [e|e _]; apply eq_is_eqᵒ in e; discriminate.
+Defined.
