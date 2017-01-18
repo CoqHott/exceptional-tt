@@ -58,7 +58,7 @@ Definition Free (A : Type) : M TYPE :=
 
 Definition Typeᵉ : M TYPE := Free TYPE.
 
-(* Check Typeᵉ : El Typeᵉ. *)
+(* Check Typeᵉ : (El Typeᵉ).(wit). *)
 
 Definition Prodᵉ (A : M TYPE) (B : (El A).(wit) -> M TYPE) : M TYPE.
 Proof.
