@@ -1,3 +1,4 @@
+-bt 
 -R theories/ Effects
 -I src/
 
@@ -12,8 +13,7 @@ theories/Effects.v
 theories/list/Eff.v
 theories/writer/Eff.v
 theories/exception/Eff.v
-theories/delay/Eff.v
 
 test/TestException.v
-test/TestWriter.v
 test/TestList.v
+test/TestDelay.v
