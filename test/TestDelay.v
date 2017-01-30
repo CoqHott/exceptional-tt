@@ -14,7 +14,7 @@ Defined.
 
 Declare Effect delay.Eff.
 
-Effect Definition foo : Type using delay.Eff. 
+(* Effect Definition foo : Type using delay.Eff.  *)
 
 (* Inductive bool : Type :=  true : bool | false : bool. *)
                                            
@@ -185,9 +185,6 @@ Proof.
 Defined.
 
 Effect Definition eq_div2 : eq _ (evalM (div2 (suc (suc (suc (suc (suc zero))))))) (evalM (suc (suc zero))) using delay.Eff.
-Proof. compute. refine (ret (id_path _)).
+Proof.
+compute. refine (ret (id_path _)).
 Defined.
-
-
-
-
