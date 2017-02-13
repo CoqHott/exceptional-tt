@@ -41,3 +41,34 @@ Effect Translate quz using Exception.
 Effect Translate bool using Exception.
 Effect Translate eq using Exception.
 Effect Translate list using Exception.
+
+Effect Definition catch_bool : forall P,
+  P true -> P false -> (forall e, P (fail e bool)) -> forall b, P b using Exception.
+Proof.
+intros P pt pf pe b.
+destruct b as [b|e].
++ cbn.
+  destruct b; cbn.
+  - apply pt.
+  - apply pf.
++ cbn.
+  apply (pe e).
+Defined.
+
+Effect Definition fail_catch_bool :
+  forall P pt pf pe e,
+  catch_bool P pt pf pe (fail e bool) = pe e
+using Exception.
+Proof.
+intros P pt pf pe e.
+refine (eq_reflᵉ _ _).
+Defined.
+
+Effect Definition fail_arrow :
+  forall A (B : A -> Type) e,
+    fail e (forall x : A, B x) = (fun x => fail e (B x))
+using Exception.
+Proof.
+intros A B e.
+refine (eq_reflᵉ _ _).
+Defined.
