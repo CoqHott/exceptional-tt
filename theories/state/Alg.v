@@ -44,14 +44,15 @@ destruct A as [X₀|[Xget|s Xset]].
 + refine (El Xset).
 Defined.
 
-Fixpoint hbnd {A} {B : T TYPE} (x : T A) (f : A -> (El B).(wit)) {struct x} : (El B).(wit).
+Definition hbnd {A} {B : T TYPE} (x : T A) (f : A -> (El B).(wit)) : (El B).(wit).
 Proof.
+refine ((fix hbnd (x : T A) := _) x).
 destruct x as [x₀|[xget|s xset]].
 + apply (f x₀).
 + refine ((El B).(prf) (op (get (fun s => ret _)))).
-  refine (hbnd _ _ (xget s) f).
+  refine (hbnd (xget s)).
 + refine ((El B).(prf) (op (set s (ret _)))).
-  refine (hbnd _ _ xset f).
+  refine (hbnd xset).
 Defined.
 
 (** More derived stuff *)
@@ -106,3 +107,44 @@ Definition bool_recᵉ : [|
 
 Check (eq_refl : (fun P Pt Pf => bool_recᵉ P Pt Pf trueᵉ) = (fun P Pt Pf => Pt)).
 Check (eq_refl : (fun P Pt Pf => bool_recᵉ P Pt Pf falseᵉ) = (fun P Pt Pf => Pf)).
+
+Inductive treeᵒ (A : T TYPE) :=
+| leafᵒ : treeᵒ A
+| nodeᵒ : [|A|] -> T (treeᵒ A) -> T (treeᵒ A) -> treeᵒ A.
+
+Definition treeᵉ : [|Typeᵉ →ᵉ Typeᵉ|] := fun A => Free (treeᵒ A).
+Definition leafᵉ : [|Πᵉ A, treeᵉ A|] := fun A => ret (leafᵒ A).
+Definition nodeᵉ : [|Πᵉ (A : [|Typeᵉ|]), A →ᵉ treeᵉ A →ᵉ treeᵉ A →ᵉ treeᵉ A|] :=
+  fun A x l r => ret (nodeᵒ A x l r).
+
+Definition tree_caseᵉ : [| Πᵉ (A : [|Typeᵉ|]) (P : [|Typeᵉ|]), P →ᵉ (A →ᵉ treeᵉ A →ᵉ P →ᵉ treeᵉ A →ᵉ P →ᵉ P) →ᵉ treeᵉ A →ᵉ P |] :=
+  fun A P Pl Pn t =>
+    hbnd t (fix F t :=
+      match t with
+      | leafᵒ _ => Pl
+      | nodeᵒ _ x l r => Pn x l (hbnd l F) r (hbnd r F)
+      end).
+
+Definition θ_tree : [| Πᵉ (A : [|Typeᵉ|]), treeᵉ A →ᵉ (treeᵉ A →ᵉ Typeᵉ) →ᵉ Typeᵉ |] :=
+  fun A t k =>
+    tree_caseᵉ A ((treeᵉ A →ᵉ Typeᵉ) →ᵉ Typeᵉ) (fun k => k (leafᵉ A)) (fun x _ kl _ kr k => kl (fun l => kr (fun r => k (nodeᵉ A x l r)))) t k.
+
+Definition tree_rectᵉ : [| Πᵉ (A : [|Typeᵉ|]) (P : [|treeᵉ A →ᵉ Typeᵉ|]),
+  P (leafᵉ A) →ᵉ
+  (Πᵉ (x : [|A|])
+      (l : [|treeᵉ A|]) (_ : [|θ_tree A l P|])
+      (r : [|treeᵉ A|]) (_ : [|θ_tree A r P|]), θ_tree A (nodeᵉ A x l r) P) →ᵉ
+  Πᵉ (t : [|treeᵉ A|]), θ_tree A t P
+|].
+Proof.
+refine (
+  fun A P Pl Pn t => @pbnd (treeᵒ A) (treeᵉ A →ᵉ Typeᵉ) _ t P _
+).
+refine (fix F t :=
+      match t with
+      | leafᵒ _ => _
+      | nodeᵒ _ x l r => _
+      end); cbn.
++ refine Pl.
++ refine (Pn x l (pbnd _ _ _ _ _ F) r (pbnd _ _ _ _ _ F)).
+Defined.
