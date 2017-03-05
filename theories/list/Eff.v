@@ -76,9 +76,36 @@ Defined.
 
 Notation "⌈ A ⌉" := (El A).
 
-Notation "x →ᵉ y" := (Prodᵉ _ (fun (_ : x) => y))
+Notation "x →ᵉ y" := (Prodᵉ _ (fun (_ : (El x).(wit)) => y))
   (at level 99, y at level 200, right associativity).
 
 Notation "'Πᵉ'  x .. y , P" := (Prodᵉ _ (fun x => .. (Prodᵉ _ (fun y => P)) ..))
   (at level 200, x binder, y binder, right associativity).
 
+(** Dependent bind *)
+
+Definition papp (A B : (El Typeᵉ).(wit)) (x : wit ⌈ A ⌉) (y : wit ⌈ B ⌉) : wit ⌈ happ A B ⌉.
+Proof.
+revert A x.
+refine (
+  fix papp A x :=
+    match A return wit (El A) -> wit (El (@happ Typeᵉ A B)) with
+    | nil _ X => fun x => pair x y
+    | cons _ X A => fun p => pair (fst p) (papp _ (snd p))
+    end x
+).
+Defined.
+
+Definition pbind {A} {R : wit ⌈ Typeᵉ ⌉} {B : A -> (El R).(wit) -> (El Typeᵉ).(wit)}
+  (l : M A) (r : (El R).(wit))
+  (f : forall x, (El (B x r)).(wit)) :
+  (El (@hbind _ (R →ᵉ Typeᵉ) l B r)).(wit).
+Proof.
+revert l.
+refine (fix pbind l := _).
+refine
+match l return (El (@hbind _ (R →ᵉ Typeᵉ) l B r)).(wit) with
+| nil _ x => f x
+| cons _ x l => papp _ _ (f x) (pbind l)
+end.
+Defined.

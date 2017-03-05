@@ -42,3 +42,51 @@ refine (ret _).
 exists (list.Eff.cons _ trueᵒ (list.Eff.nil _ falseᵒ)).
 refine (ret _); constructor; intros e; destruct e as [e|e _]; apply eq_is_eqᵒ in e; discriminate.
 Defined.
+
+Inductive btree_ := bleaf_ : btree_ | bnode_ : (M boolᵒ -> M btree_) -> btree_.
+
+Effect Definition btree : Type using list.Eff.
+Proof.
+refine (Free btree_).
+Defined.
+
+Effect Definition bleaf : btree using list.Eff.
+Proof.
+refine (ret bleaf_).
+Defined.
+
+Effect Definition bnode : (bool -> btree) -> btree using list.Eff.
+Proof.
+refine (fun f => ret (bnode_ f)).
+Defined.
+
+Effect Definition btree_case : forall P, P -> ((bool -> btree) -> (bool -> P) -> P) -> btree -> P using list.Eff.
+Proof.
+intros P pleaf pnode t.
+refine (hbind t (fix btree_case t := match t with bleaf_ => pleaf | bnode_ f => pnode f (fun b => hbind (f b) btree_case) end)).
+Defined.
+
+Definition θ_btree : btree -> (btree -> Type) -> Type :=
+  btree_case ((btree -> Type) -> Type) (fun k => k bleaf) (fun f _ k => k (bnode f)).
+
+Effect Translate θ_btree using list.Eff.
+
+Effect Definition btree_rect : forall (P : btree -> Type),
+  (θ_btree bleaf P) ->
+    (forall (f : bool -> btree), (forall b, θ_btree (f b) P) -> θ_btree (bnode f) P) ->
+    forall t, θ_btree t P using list.Eff.
+Proof.
+intros P pleaf pnode t.
+refine (pbind t P _).
+refine (fix btree_rect t := _).
+refine (
+  match t with
+  | bleaf_ => _
+  | bnode_ f => _
+  end
+).
++ refine pleaf.
++ refine (pnode _ (fun b => _)).
+  refine (pbind (f b) P _).
+  refine (btree_rect).
+Defined.
