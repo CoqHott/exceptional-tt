@@ -40,7 +40,7 @@ Definition El (A : TYPE) : Type := sig (C A -> Ω) (Cᴿ A).
 
 Check Typeᶠ : El Typeᶠ.
 
-Definition Prodᶠ (A : TYPE) (B : El A -> TYPE) : TYPE.
+Definition Prodᶠ (A : TYPE) (B : El A -> TYPE) : El Typeᶠ.
 Proof.
 unshelve refine (exist _ _ (ret _) _).
 + refine (sig (El A) (fun x => C (B x))).
@@ -160,4 +160,101 @@ Lemma squash_bool_caseᶠ_false :
 Proof.
 intros P Pt Pf; compute.
 destruct Pf as [? [ ] ]; reflexivity.
+Defined.
+
+Inductive psigma (A : Type) (B : A -> Type) :=
+| pexist : forall x, B x -> psigma A B.
+
+Inductive sigmaᴿ (A : El Typeᶠ) (B : El (A →ᶠ Typeᶠ)) :
+  M (psigma (El A) (fun x => El (B · x))) -> Type :=
+| existᴿ : forall x y, sigmaᴿ A B (ret (pexist _ _ x y)).
+
+Definition sigmaᶠ : El (Πᶠ (A : El Typeᶠ) (B : El (A →ᶠ Typeᶠ)), Typeᶠ).
+Proof.
+refine (λᶠ A B, _).
+unshelve refine (exist _ _ (ret (_ -> Ω)) (IsType _ _)).
++ refine (psigma (El A) (fun x => El (B · x))).
++ refine (sigmaᴿ _ _).
+Defined.
+
+Definition existᶠ : El (
+  Πᶠ (A : El Typeᶠ) (B : El (A →ᶠ Typeᶠ)) (x : El A) (y : El (B · x)),
+    sigmaᶠ · A · B).
+Proof.
+refine (λᶠ A B x y, _).
+refine (exist _ _ (ret _) (existᴿ A B x y)).
+Defined.
+
+Definition sigma_rectᶠ : El
+  (Πᶠ (A : El Typeᶠ) (B : El (A →ᶠ Typeᶠ)) (P : El (sigmaᶠ · A · B →ᶠ Typeᶠ)),
+  (Πᶠ x y, P · (existᶠ · A · B · x · y)) →ᶠ Πᶠ (p : El (sigmaᶠ · A · B)), P · p).
+Proof.
+refine (λᶠ A B P Pex p, _).
+refine (
+match p.(prf) as pr in sigmaᴿ _ _ p return El (P · (exist _ _ _ pr)) with
+| existᴿ _ _ x y => Pex · x · y
+end
+).
+Defined.
+
+Definition choice : El (
+  Πᶠ (A B : El Typeᶠ) (P : El (A →ᶠ B →ᶠ Typeᶠ)),
+    (Πᶠ x, [[ sigmaᶠ · B · (λᶠ y, P · x · y) ]]) →ᶠ
+    [[ sigmaᶠ · (A →ᶠ B) · (λᶠ f, Πᶠ x, P · x · (f · x)) ]]
+).
+Proof.
+refine (λᶠ A B P f, _).
+revert f; intros [f _].
+unshelve refine (exist _ _ _ tt).
+cbn in *.
+refine (fun k => _).
+assert (k' := fun f y => k (pexist _ _ f y)); clear k; rename k' into k.
+cbn in *.
+assert (f' := fun x y => f (exist _ _ x y)); clear f; rename f' into f.
+cbn in *.
+
+unshelve refine (k _ _).
++ unshelve refine (exist _ _ _ _).
+  - cbn; intros [x ω].
+    refine (f x _).
+    intros [y _]; refine (y.(wit) ω).
+  - intros x.
+cbn.
+
+Abort.
+
+Definition choice : El (
+  Πᶠ (A : El Typeᶠ) (B : El (A →ᶠ Typeᶠ)),
+    (Πᶠ x, [[ B · x ]]) →ᶠ
+    [[ Πᶠ x, B · x ]]
+).
+Proof.
+refine (λᶠ A B f, _).
+refine (exist _ _ _ tt).
+cbn; intros [x k].
+refine (f.(wit) (exist _ _ x k)).
+Defined.
+
+Inductive sum (A B : Type) :=
+| inl : A -> sum A B
+| inr : B -> sum A B.
+
+Inductive sumᴿ (A B : El Typeᶠ) :
+  M (sum (El A) (El B)) -> Type :=
+| inlᴿ : forall x, sumᴿ A B (ret (inl _ _ x))
+| inrᴿ : forall y, sumᴿ A B (ret (inr _ _ y)).
+
+Definition sumᶠ : El (Typeᶠ →ᶠ Typeᶠ →ᶠ Typeᶠ).
+Proof.
+refine (λᶠ A B, _).
+refine (exist _ _ (ret _) (IsType _ (sumᴿ A B))).
+Defined.
+
+Definition em : El (Πᶠ A, [[ sumᶠ · A · (A →ᶠ Falseᶠ) ]]).
+Proof.
+refine (λᶠ A, _).
+refine (exist _ _ _ tt).
+cbn.
+refine (fun ω => ω (inr _ _ (λᶠ x, _))).
+destruct (ω (inl _ _ x)).
 Defined.
