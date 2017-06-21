@@ -1,6 +1,9 @@
 Set Universe Polymorphism.
 Set Primitive Projections.
 
+Inductive unit := tt.
+Inductive eq (A : Type) (x : A) : A -> Type := refl : eq A x x.
+
 Record Pack (A₀ A₁ : Type) (Aᴿ : A₀ -> A₁ -> Type) := mkPack {
   el₀ : A₀;
   el₁ : A₁;
@@ -107,3 +110,60 @@ Defined.
 Inductive emptyᵀ : Type := .
 Inductive emptyᴿ : emptyᵀ -> emptyᵀ -> Type := .
 Definition emptyᶠ := mkTYPE emptyᵀ emptyᵀ emptyᴿ.
+
+Inductive eqᴿ (A : El Typeᶠ) (x : El A) :
+  forall (y : El A), eq (el₀ A) (el₀ x) (el₀ y) -> eq (el₁ A) (el₁ x) (el₁ y) -> Type :=
+| reflᴿ : eqᴿ A x x (refl _ _) (refl _ _).
+
+Definition eqᶠ : El (Πᶠ (A : El Typeᶠ), A →ᶠ A →ᶠ Typeᶠ).
+Proof.
+refine (λᶠ A x y, _).
+unshelve refine (mkTYPE _ _ _).
++ refine (eq _ x.(el₀) y.(el₀)).
++ refine (eq _ x.(el₁) y.(el₁)).
++ refine (eqᴿ A x y).
+Defined.
+
+Definition reflᶠ : El (Πᶠ (A : El Typeᶠ) (x : El A), eqᶠ · A · x · x).
+Proof.
+refine (λᶠ A x, _).
+unshelve refine (mkPack _ _ _ _ _ (reflᴿ A x)).
+Defined.
+
+Definition eq_rectᶠ : El (
+  Πᶠ (A : El Typeᶠ) (x : El A) (P : El (Πᶠ (y : El A), eqᶠ · A · x · y →ᶠ Typeᶠ))
+  (prefl : El (P · x · (reflᶠ · A · x))) (y : El A) (e : El (eqᶠ · A · x · y)), P · y · e
+).
+Proof.
+refine (λᶠ A x P prefl y e, _).
+destruct e as [e₀ e₁ e].
+destruct e.
+apply prefl.
+Defined.
+
+Check eq_refl :
+  (fun A x P prefl => eq_rectᶠ · A · x · P · prefl · x · (reflᶠ · A · x)) =
+  (fun A x P prefl => prefl).
+
+Definition squashᶠ : El (Typeᶠ →ᶠ Typeᶠ).
+Proof.
+refine (λᶠ A, _).
+refine (mkTYPE A.(el₀) A.(el₁) (fun _ _ => unit)).
+Defined.
+
+Definition inhabitsᶠ : El (Πᶠ (A : El Typeᶠ), A →ᶠ squashᶠ · A).
+Proof.
+refine (λᶠ A x, _).
+refine (mkPack _ _ _ x.(el₀) x.(el₁) tt).
+Defined.
+
+Definition Elᶠ : El (squashᶠ · Typeᶠ →ᶠ Typeᶠ).
+Proof.
+refine (λᶠ A, _).
+refine (mkTYPE A.(el₀) A.(el₁) (fun _ _ => unit)).
+Defined.
+
+Check (eq_refl : (fun A => Elᶠ · (inhabitsᶠ · Typeᶠ · A)) = (fun A => squashᶠ · A)).
+
+Inductive sigmaᴿ (A : El Typeᶠ) (P : El (A →ᶠ Typeᶠ)) : Type :=
+| existᴿ
