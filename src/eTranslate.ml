@@ -54,12 +54,8 @@ let apply_global env sigma gr =
   in
   let (sigma, c) = Evd.fresh_global env.env_tgt sigma gr in
   let c = EConstr.of_constr c in
-  (sigma, c)
-
-let mkHole env sigma =
-  let sigma, (typ, _) = Evarutil.new_type_evar env sigma Evd.univ_flexible_alg in
-  let sigma, c = Evarutil.new_evar env sigma typ in
-  (sigma, c)
+  let e = mkRel (Environ.nb_rel env.env_tgt) in
+  (sigma, mkApp (c, [|e|]))
 
 let fresh_global env sigma gr =
   try
