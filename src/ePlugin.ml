@@ -21,49 +21,33 @@ let translate_internal_name id =
 
 (** Record of translation between globals *)
 
-type effect = Libnames.reference
-
 type translator = ETranslate.translator
 
-let translator : translator MPmap.t ref =
-  Summary.ref ~name:"Effect Global Table" MPmap.empty
+let translator : translator ref =
+  Summary.ref ~name:"Effect Global Table" { ETranslate.refs = Refmap.empty }
 
 type translator_obj =
-| NewEffect of ModPath.t
-| ExtendEffect of ModPath.t * (global_reference * global_reference) list
+| ExtendEffect of (global_reference * global_reference) list
 
-let declare_translator tr mp =
+let extend_translator tr l =
   let open ETranslate in
-  assert (not (MPmap.mem mp tr));
-  let empty = { effs = mp; refs = Refmap.empty } in
-  MPmap.add mp empty tr
-
-let extend_translator tr mp l =
-  let open ETranslate in
-  let defs = try MPmap.find mp tr with Not_found -> assert false in
-  let refs = defs.refs in
+  let refs = tr.refs in
   let fold accu (src, dst) = Refmap.add src dst accu in
   let refs = List.fold_left fold refs l in
-  MPmap.update mp { defs with refs } tr
+  { refs }
 
 let cache_translator (_, l) = match l with
-| NewEffect mp ->
-  translator := declare_translator !translator mp
-| ExtendEffect (mp, l) ->
-  translator := extend_translator !translator mp l
+| ExtendEffect l ->
+  translator := extend_translator !translator l
 
 let load_translator _ obj = cache_translator obj
 let open_translator _ obj = cache_translator obj
 
 let subst_translator (subst, obj) = match obj with
-| NewEffect mp ->
-  let mp' = Mod_subst.subst_mp subst mp in
-  if mp' == mp then obj else NewEffect mp'
-| ExtendEffect (mp, l) ->
-  let mp' = Mod_subst.subst_mp subst mp in
+| ExtendEffect l ->
   let map (src, dst) = (subst_global_reference subst src, subst_global_reference subst dst) in
   let l' = List.smartmap map l in
-  if mp' == mp && l' == l then obj else ExtendEffect (mp', l')
+  if l' == l then obj else ExtendEffect l'
 
 let in_translator : translator_obj -> obj =
   declare_object { (default_object "FORCING TRANSLATOR") with
@@ -90,24 +74,16 @@ let declare_constant id uctx c t =
   let cst_ = Declare.declare_constant id decl in
   cst_
 
-let get_translator eff =
-  let fail () = errorlabstrm ""
-    (str "Effect " ++ Libnames.pr_reference eff ++ str " not found")
-  in
-  let (_, qid) = Libnames.qualid_of_reference eff in
-  let eff = try Nametab.locate_module qid with Not_found -> fail () in
-  let data = try MPmap.find eff !translator with Not_found -> fail () in
-  (eff, data)
-
-let translate_constant (eff, translator) cst ids =
+let translate_constant translator cst ids =
   let id = match ids with
   | None -> translate_name (Nametab.basename_of_global (ConstRef cst))
   | Some [id] -> id
-  | Some _ -> error "Not the right number of provided names"
+  | Some _ -> user_err (str "Not the right number of provided names")
   in
   (** Translate the type *)
-  let typ = Universes.unsafe_type_of_global (ConstRef cst) in
   let env = Global.env () in
+  let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
+  let typ = EConstr.of_constr typ in
   let sigma = Evd.from_env env in
   let (sigma, translator) = ETranslate.make_context translator env sigma in
   let (sigma, typ) = ETranslate.translate_type translator sigma typ in
@@ -115,13 +91,16 @@ let translate_constant (eff, translator) cst ids =
   let sigma, _ = Typing.type_of env sigma typ in
   let _uctx = Evd.evar_universe_context sigma in
   (** Define the term by tactic *)
-  let body = Option.get (Global.body_of_constant cst) in
+  let (body, _) = Option.get (Global.body_of_constant cst) in
+  let body = EConstr.of_constr body in
   let (sigma, body) = ETranslate.translate translator sigma body in
+  Feedback.msg_notice (Printer.pr_econstr_env env sigma body);
   let (sigma, body) = solve_evars env sigma body in
-(*   msg_info (Termops.print_constr body); *)
   let evdref = ref sigma in
   let () = Typing.e_check env evdref body typ in
   let sigma = !evdref in
+  let body = EConstr.to_constr sigma body in
+  let typ = EConstr.to_constr sigma typ in
   let (_, uctx) = Evd.universe_context sigma in
   let cst_ = declare_constant id uctx body typ in
   [ConstRef cst, ConstRef cst_]
@@ -148,7 +127,7 @@ let substl_rel_context subst ctx =
   let (ctx, _) = Term.decompose_prod_assum ctx in
   ctx
 
-
+(*
 (** From a kernel inductive body construct an entry for the inductive. There
     are slight mismatches in the representation, in particular in the handling
     of contexts. See {!Declarations} and {!Entries}. *)
@@ -261,7 +240,7 @@ let translate_inductive_aux translator ind =
   }
 
 (** Build the wrapper around an inductive type *)
-let get_inductive_type (eff, translator) ind ind_ i body body_ =
+let get_inductive_type translator ind ind_ i body body_ =
   let open Declarations in
   let name = translate_name body.mind_typename in
   let env = Global.env () in
@@ -332,31 +311,36 @@ let translate_inductive_defs (eff, translator) ind ind_ mind mind_ =
   in
   let constructors = List.map map_constructors constructors in
   types @ constructors
+*)
 
-let translate_inductive (eff, translator) ind =
+let translate_inductive translator ind =
   let open Declarations in
+(*
   let (mind, _) = Global.lookup_inductive ind in
   let mind_ = translate_inductive_aux translator ind in
   let ((_, kn), _) = Declare.declare_mind mind_ in
   let ind_ = Global.mind_of_delta_kn kn in
   let mind_ = Global.lookup_mind ind_ in
   translate_inductive_defs (eff, translator) (fst ind) ind_ mind mind_
+*)
+  assert false
 
-let translate eff gr ids =
+let translate gr ids =
   let gr = Nametab.global gr in
-  let (eff, translator) = get_translator eff in
+  let translator = !translator in
   let ans = match gr with
-  | ConstRef cst -> translate_constant (eff, translator) cst ids
-  | IndRef ind -> translate_inductive (eff, translator) ind
-  | _ -> error "Translation not handled."
+  | ConstRef cst -> translate_constant translator cst ids
+  | IndRef ind -> translate_inductive translator ind
+  | _ -> user_err (str "Translation not handled.")
   in
-  let () = Lib.add_anonymous_leaf (in_translator (ExtendEffect (eff, ans))) in
+  let () = Lib.add_anonymous_leaf (in_translator (ExtendEffect ans)) in
   let msg_translate (src, dst) =
     Feedback.msg_info (str "Global " ++ Printer.pr_global src ++
     str " has been translated as " ++ Printer.pr_global dst ++ str ".")
   in
   List.iter msg_translate ans
 
+(*
 (** Implementation in the forcing layer *)
 
 let implement eff id typ idopt =
@@ -385,16 +369,7 @@ let implement eff id typ idopt =
   let sigma, _ = Typing.type_of env sigma typ_ in
   let () = Lemmas.start_proof_univs id_ kind sigma typ_ hook in
   ()
-
-(** Declaring a new effect *)
-
-let declare_effect eff =
-  let eff =
-    try Nametab.locate_module (snd (Libnames.qualid_of_reference eff))
-    with Not_found ->
-      errorlabstrm "" (str "Unknown module " ++ Libnames.pr_reference eff)
-  in
-  Lib.add_anonymous_leaf (in_translator (NewEffect eff))
+*)
 
 (** Error handling *)
 

@@ -5,12 +5,9 @@ open Context
 exception MissingGlobal of global_reference
 exception MissingPrimitive of global_reference
 
-type effect = ModPath.t
-
 type context
 
 type translator = {
-  effs : effect;
   refs : global_reference Refmap.t;
 }
 
@@ -20,25 +17,21 @@ val push_context : Context.Rel.t * Context.Rel.t -> context -> context
 (** Push source / translated context *)
 
 val translate :
-  context -> Evd.evar_map -> Constr.t -> Evd.evar_map * Constr.t
+  context -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
 
 val translate_type :
-  context -> Evd.evar_map -> Constr.t -> Evd.evar_map * Constr.t
+  context -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
 
 val translate_context :
-  context -> Evd.evar_map -> Context.Rel.t -> Evd.evar_map * Context.Rel.t
-
-val ret : context -> global_reference
-val free_algebra : context -> global_reference
-(** The function producing the free type algebra *)
+  context -> Evd.evar_map -> EConstr.rel_context -> Evd.evar_map * EConstr.rel_context
 
 (** Variants that do not typecheck *)
 
 val otranslate :
-  context -> Evd.evar_map -> Constr.t -> Evd.evar_map * Constr.t
+  context -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
 
 val otranslate_type :
-  context -> Evd.evar_map -> Constr.t -> Evd.evar_map * Constr.t
+  context -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
 
 val otranslate_context :
-  context -> Evd.evar_map -> Context.Rel.t -> Evd.evar_map * Context.Rel.t
+  context -> Evd.evar_map -> EConstr.rel_context -> Evd.evar_map * EConstr.rel_context

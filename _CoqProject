@@ -1,3 +1,4 @@
+-bypass-API
 -R theories/ Effects
 -I src/
 
@@ -9,11 +10,3 @@ src/g_exception.ml4
 src/exception.mlpack
 
 theories/Effects.v
-theories/list/Eff.v
-theories/writer/Eff.v
-theories/exception/Eff.v
-theories/delay/Eff.v
-
-test/TestException.v
-test/TestList.v
-test/TestDelay.v
