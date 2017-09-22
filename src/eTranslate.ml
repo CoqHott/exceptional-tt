@@ -295,8 +295,6 @@ let translate_inductive_body env sigma mind0 mind ind0 ind =
   let arity = it_mkProd_or_LetIn (mkSort sort) arity_ctx' in
   let (sigma, _) = Typing.type_of env.env_tgt sigma arity in
   let (sigma, lc) = translate_constructors env sigma mind0 mind ind0 ind in
-(*   let fold sigma c = check_type env sigma c (mkSort sort) in *)
-(*   let sigma = List.fold_left fold sigma lc in *)
   let lc = List.map (fun c -> EConstr.to_constr sigma c) lc in
   let ind = { ind with
     mind_entry_typename = typename;
@@ -306,6 +304,104 @@ let translate_inductive_body env sigma mind0 mind ind0 ind =
   } in
   (sigma, ind)
 
+let sign_level env evd sign =
+  let fold d (lev, env) = match d with
+  | LocalDef _ -> lev, push_rel d env
+  | LocalAssum (_, t) ->
+    let s = Retyping.get_type_of env evd (EConstr.of_constr t) in
+    let s = destSort evd (Reductionops.clos_whd_flags CClosure.all env evd s) in
+    let u = univ_of_sort (ESorts.kind evd s) in
+    (Univ.sup u lev, push_rel d env)
+  in
+  fst (List.fold_right fold sign (Univ.type0m_univ, env))
+
+let extract_level env evd min tys =
+  let map ty =
+    let ctx, concl = Reduction.dest_prod_assum env ty in
+    sign_level env evd (LocalAssum (Anonymous, concl) :: ctx)
+  in
+  let sorts = List.map map tys in
+  List.fold_left Univ.sup min sorts
+
+let is_impredicative env u =
+  u = Prop Null || (is_impredicative_set env && u = Prop Pos)
+
+let is_flexible_sort evd u =
+  match Univ.Universe.level u with
+  | Some l -> Evd.is_flexible_level evd l
+  | None -> false
+
+let inductive_levels env sigma arities inds =
+  let destarities = List.map (fun x -> x, Reduction.dest_arity env x) arities in
+  let levels = List.map (fun (x,(ctx,a)) ->
+    if a = Prop Null then None
+    else Some (univ_of_sort a)) destarities
+  in
+  let map tys (arity, (ctx, du)) =
+    let len = List.length tys in
+    let minlev = Sorts.univ_of_sort du in
+    let minlev =
+      if len > 1 && not (is_impredicative env du) then
+        Univ.sup minlev Univ.type0_univ
+      else minlev
+    in
+    let minlev =
+      (** Indices contribute. *)
+      if Indtypes.is_indices_matter () && List.length ctx > 0 then (
+        let ilev = sign_level env sigma ctx in
+          Univ.sup ilev minlev)
+      else minlev
+    in
+    let clev = extract_level env sigma minlev tys in
+    (clev, minlev, len)
+  in
+  let cstrs_levels, min_levels, sizes = CList.split3 (List.map2 map inds destarities) in
+  (* Take the transitive closure of the system of constructors *)
+  (* level constraints and remove the recursive dependencies *)
+  let levels' = Universes.solve_constraints_system (Array.of_list levels)
+    (Array.of_list cstrs_levels) (Array.of_list min_levels)
+  in
+  let sigma, arities =
+    CList.fold_left3 (fun (sigma, arities) cu (arity,(ctx,du)) len ->
+      if is_impredicative env du then
+        (** Any product is allowed here. *)
+        sigma, arity :: arities
+      else (** If in a predicative sort, or asked to infer the type,
+               we take the max of:
+               - indices (if in indices-matter mode)
+               - constructors
+               - Type(1) if there is more than 1 constructor
+           *)
+        (** Constructors contribute. *)
+        let sigma =
+          if Sorts.is_set du then
+            if not (Evd.check_leq sigma cu Univ.type0_univ) then
+              raise (Indtypes.InductiveError Indtypes.LargeNonPropInductiveNotInType)
+            else sigma
+          else sigma
+            (* Evd.set_leq_sort env sigma (Type cu) du *)
+        in
+        let sigma =
+          if len >= 2 && Univ.is_type0m_univ cu then
+           (** "Polymorphic" type constraint and more than one constructor,
+               should not land in Prop. Add constraint only if it would
+               land in Prop directly (no informative arguments as well). *)
+            Evd.set_leq_sort env sigma (Prop Pos) du
+          else sigma
+        in
+        let duu = Sorts.univ_of_sort du in
+        let sigma =
+          if not (Univ.is_small_univ duu) && Univ.Universe.equal cu duu then
+            if is_flexible_sort sigma duu && not (Evd.check_leq sigma Univ.type0_univ duu) then
+              Evd.set_eq_sort env sigma (Prop Null) du
+            else sigma
+          else Evd.set_eq_sort env sigma (Type cu) du
+        in
+          (sigma, arity :: arities))
+    (sigma, []) (Array.to_list levels') destarities sizes
+  in
+  (sigma, List.rev arities)
+
 (** Infer the universe constraints for constructors *)
 let retype_inductive env sigma params inds =
   let env = Environ.pop_rel_context (Environ.nb_rel env) env in
@@ -314,24 +410,30 @@ let retype_inductive env sigma params inds =
     let (sigma, _) = Typing.type_of env sigma arity in
     (sigma, arity)
   in
-  let (sigma, arities) = List.fold_left_map mk_arities sigma inds in
-  let env = List.fold_left (fun env c -> EConstr.push_rel (LocalAssum (Anonymous, c)) env) env arities in
+  let (sigma, extarities) = List.fold_left_map mk_arities sigma inds in
+  let fold env c ind = EConstr.push_rel (LocalAssum (Name ind.mind_entry_typename, c)) env in
+  let env = List.fold_left2 fold env extarities inds in
   let env = EConstr.push_rel_context params env in
-  (** Check that all constructors have the corresponding type from their block *)
   let fold sigma ind =
-    Feedback.msg_notice (Printer.pr_constr ind.mind_entry_arity);
-(*     let t = EConstr.of_constr ind.mind_entry_arity in *)
     let fold sigma c =
-      let c = EConstr.of_constr c in
-(*       let evdref = ref sigma in *)
-(*       let () = Typing.e_check env evdref c t in *)
-(*       !evdref *)
-      let (sigma, _) = Typing.type_of env sigma c in
+      let (sigma, _) = Typing.type_of env sigma (EConstr.of_constr c) in
       sigma
     in
-    List.fold_left fold sigma ind.mind_entry_lc
+    let sigma = List.fold_left fold sigma ind.mind_entry_lc in
+    (sigma, ind.mind_entry_lc)
   in
-  List.fold_left fold sigma inds
+  let sigma, constructors = List.fold_left_map fold sigma inds in
+  let arities = List.map (fun ind -> ind.mind_entry_arity) inds in
+  let (sigma, arities) = inductive_levels env sigma arities constructors in
+  let params = List.map (fun d -> EConstr.to_rel_decl sigma d) params in
+  let sigma, nf = Evarutil.nf_evars_and_universes sigma in
+  let map ind arity = { ind with
+    mind_entry_arity = nf arity;
+    mind_entry_lc = List.map nf ind.mind_entry_lc;
+  } in
+  let inds = List.map2 map inds arities in
+  let params = Rel.map nf params in
+  sigma, inds, params
 
 let translate_inductive translator env mind0 (mind : Entries.mutual_inductive_entry) =
   let sigma = Evd.from_env env in
@@ -340,8 +442,8 @@ let translate_inductive translator env mind0 (mind : Entries.mutual_inductive_en
   let inds = List.combine (Array.to_list mind0.mind_packets) mind.mind_entry_inds in
   let map sigma (ind0, ind) = translate_inductive_body env sigma mind0 mind ind0 ind in
   let sigma, inds = List.fold_left_map map sigma inds in
-  let sigma = retype_inductive env.env_tgt sigma (EConstr.rel_context env.env_tgt) inds in
-  let params = List.map to_local_entry (Environ.rel_context env.env_tgt) in
+  let sigma, inds, params = retype_inductive env.env_tgt sigma (EConstr.rel_context env.env_tgt) inds in
+  let params = List.map to_local_entry params in
   let (_, uctx) = Evd.universe_context sigma in
   let univs = match mind.mind_entry_universes with
   | Monomorphic_ind_entry _ -> Monomorphic_ind_entry uctx
