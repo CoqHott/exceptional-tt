@@ -168,6 +168,9 @@ and otranslate_type env sigma t = match EConstr.kind sigma t with
   let (sigma, args) = Array.fold_map fold sigma args in
   let (sigma, c) = apply_global env sigma (IndRef ind) in
   (sigma, mkApp (c, args))
+| Ind (ind, _) ->
+  let (sigma, c) = apply_global env sigma (IndRef ind) in
+  (sigma, c)
 | Prod (na, t, u) ->
   let (sigma, te) = otranslate_type env sigma t in
   let env = push_assum na (t, te) env in
