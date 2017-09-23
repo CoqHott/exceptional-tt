@@ -222,6 +222,10 @@ let translate_internal_name id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᵒ")
 
+let translate_failure id =
+  let id = Id.to_string id in
+  Id.of_string (id ^ "ᴱ")
+
 let rec translate_context env sigma = function
 | [] -> sigma, env, []
 | LocalAssum (na, t) :: params ->
@@ -295,22 +299,31 @@ let translate_constructors env sigma mind0 mind ind0 ind =
   in
   List.fold_left_map map sigma ind.mind_entry_lc
 
-let translate_inductive_body env sigma mind0 mind ind0 ind =
+let translate_inductive_body env sigma mind0 mind n ind0 ind =
   let typename = translate_internal_name ind.mind_entry_typename in
   let constructors = List.map translate_name ind.mind_entry_consnames in
   let nindices = List.length ind0.mind_arity_ctxt - List.length mind0.mind_params_ctxt in
   let arity_ctx, _ = List.chop nindices ind0.mind_arity_ctxt in
-  let (sigma, _, arity_ctx') = translate_context env sigma arity_ctx in
+  let (sigma, arity_env, arity_ctx') = translate_context env sigma arity_ctx in
   let (sigma, sort) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.env_tgt sigma InType in
   let arity = it_mkProd_or_LetIn (mkSort sort) arity_ctx' in
   let (sigma, _) = Typing.type_of env.env_tgt sigma arity in
   let (sigma, lc) = translate_constructors env sigma mind0 mind ind0 ind in
   let lc = List.map (fun c -> EConstr.to_constr sigma c) lc in
+  let fail_name = translate_failure ind.mind_entry_typename in
+  let fail_arg (n, accu) = function
+  | LocalAssum _ -> (succ n, mkRel n :: accu)
+  | LocalDef _ -> (succ n, accu)
+  in
+  let (_, fail_args) = List.fold_left fail_arg (1, []) (Environ.rel_context arity_env.env_tgt) in
+  let n = 1 + n + Environ.nb_rel arity_env.env_tgt in
+  let fail_case = applist (mkRel n, fail_args) in
+  let fail_case = it_mkProd_or_LetIn fail_case arity_ctx' in
   let ind = { ind with
     mind_entry_typename = typename;
     mind_entry_arity = EConstr.to_constr sigma arity;
-    mind_entry_consnames = constructors;
-    mind_entry_lc = lc;
+    mind_entry_consnames = constructors @ [fail_name];
+    mind_entry_lc = lc @ [EConstr.to_constr sigma fail_case];
   } in
   (sigma, ind)
 
@@ -450,7 +463,8 @@ let translate_inductive translator env mind0 (mind : Entries.mutual_inductive_en
   let (sigma, env) = make_context translator env sigma in
   let (sigma, env, _) = translate_context env sigma mind0.mind_params_ctxt in
   let inds = List.combine (Array.to_list mind0.mind_packets) mind.mind_entry_inds in
-  let map sigma (ind0, ind) = translate_inductive_body env sigma mind0 mind ind0 ind in
+  let inds = List.mapi (fun i (ind, ind0) -> (i, ind, ind0)) inds in
+  let map sigma (n, ind0, ind) = translate_inductive_body env sigma mind0 mind n ind0 ind in
   let sigma, inds = List.fold_left_map map sigma inds in
   let sigma, inds, params = retype_inductive env.env_tgt sigma (EConstr.rel_context env.env_tgt) inds in
   let params = List.map to_local_entry params in
