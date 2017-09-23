@@ -230,7 +230,8 @@ let translate_inductive_aux translator env mind =
 
 (** Register the wrapping of the inductive type and its constructors *)
 let translate_inductive_defs translator ind ind_ mind mind_ =
-  []
+  let map i = IndRef (ind, i), IndRef (ind_, i) in
+  List.init (Array.length mind.Declarations.mind_packets) map
 
 let translate_inductive translator ind =
   let open Declarations in

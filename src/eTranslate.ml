@@ -54,10 +54,20 @@ let dummy = mkProp
 
 (** Handling of globals *) 
 
+let get_global env gr =
+  try Refmap.find gr env.translator.refs
+  with Not_found -> raise (MissingGlobal gr)
+
 let apply_global env sigma gr =
-  let gr =
-    try Refmap.find gr env.translator.refs
-    with Not_found -> raise (MissingGlobal gr)
+  let gr = match gr with
+  | ConstructRef (ind, n) ->
+    let ind = match get_global env (IndRef ind) with
+    | IndRef ind -> ind
+    | _ -> assert false
+    in
+    ConstructRef (ind, n)
+  | gr ->
+    get_global env gr
   in
   let (sigma, c) = Evd.fresh_global env.env_tgt sigma gr in
   let c = EConstr.of_constr c in
