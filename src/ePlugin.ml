@@ -93,7 +93,6 @@ let translate_constant translator cst ids =
   let (body, _) = Option.get (Global.body_of_constant cst) in
   let body = EConstr.of_constr body in
   let (sigma, body) = ETranslate.translate translator env sigma body in
-  Feedback.msg_notice (Printer.pr_econstr_env env sigma body);
   let (sigma, body) = solve_evars env sigma body in
   let evdref = ref sigma in
   let () = Typing.e_check env evdref body typ in

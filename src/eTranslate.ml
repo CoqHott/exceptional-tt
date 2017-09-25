@@ -198,11 +198,29 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   let pe = Array.append pe [|default|] in
   let r = mkCase (cie, re, ce, pe) in
   (sigma, r)
-| Fix f -> assert false
-| CoFix f -> assert false
+| Fix (fi, recdef) ->
+  let (sigma, recdefe) = otranslate_recdef env sigma recdef in
+  let r = mkFix (fi, recdefe) in
+  (sigma, r)
+| CoFix (fi, recdef) ->
+  let (sigma, recdefe) = otranslate_recdef env sigma recdef in
+  let r = mkCoFix (fi, recdefe) in
+  (sigma, r)
 | Proj (p, c) -> assert false
 | Meta _ -> assert false
 | Evar _ -> assert false
+
+and otranslate_recdef env sigma (nas, tys, bodies) =
+  let fold i (env, sigma, ans) na t =
+    let t = Vars.lift i t in
+    let (sigma, te) = otranslate_type env sigma t in
+    let env = push_assum na (t, te) env in
+    (env, sigma, te :: ans)
+  in
+  let (env, sigma, tyse) = Array.fold_left2_i fold (env, sigma, []) nas tys in
+  let tyse = Array.rev_of_list tyse in
+  let (sigma, bodiese) = Array.fold_left_map (fun sigma c -> otranslate env sigma c) sigma bodies in
+  (sigma, (nas, tyse, bodiese))
 
 (** Special handling of types not to clutter the translation *)
 and otranslate_type env sigma t = match EConstr.kind sigma t with
