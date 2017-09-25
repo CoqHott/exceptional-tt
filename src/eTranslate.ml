@@ -53,6 +53,9 @@ let err_e = ConstRef (Constant.make1 (make_kn "Err"))
 
 let dummy = mkProp
 
+let name_errtype = Id.of_string "E"
+let name_err = Id.of_string "e"
+
 (** Handling of globals *) 
 
 let get_global env gr =
@@ -105,6 +108,18 @@ let translate_case_info env sigma ci mip =
     cstr_tags = Array.append ci.ci_pp_info.cstr_tags [|tags|];
   } in
   { ci_ind; ci_npar; ci_cstr_ndecls; ci_cstr_nargs; ci_pp_info; }
+
+let mk_default_ind env sigma (ind, u) =
+  let e = mkRel (Environ.nb_rel env.env_tgt) in
+  let (_, mip) = Inductive.lookup_mind_specif env.env_src ind in
+  let err = Array.length mip.mind_consnames + 1 in
+  let ind = match get_global env (IndRef ind) with
+  | IndRef ind -> ind
+  | _ -> assert false
+  in
+  let (sigma, (ind, u)) = Evd.fresh_inductive_instance env.env_tgt sigma ind in
+  let r = mkApp (mkConstructU ((ind, err), EInstance.make u), [|e|]) in
+  (sigma, r)
 
 let rec otranslate env sigma c = match EConstr.kind sigma c with
 | Rel n ->
@@ -174,16 +189,12 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   let cie = translate_case_info env sigma ci mip in
   let (ctx, r) = EConstr.decompose_lam_assum sigma r in
   let (sigma, env', ctxe) = otranslate_context env sigma ctx in
-  let (sigma, re) = otranslate_type env' sigma r in
-  let (sigma, reT) = otranslate env' sigma r in
-  let re = it_mkLambda_or_LetIn re ctxe in
   let (sigma, ce) = otranslate env sigma c in
   let map sigma p = otranslate env sigma p in
   let (sigma, pe) = Array.fold_left_map map sigma p in
-  let (sigma, err) = fresh_global env sigma err_e in
   let nE = Environ.nb_rel env'.env_tgt in
   (** The default constructor has as arguments the indices of the block plus an error *)
-  let default_ctx = LocalAssum (Name (Id.of_string "e"), mkRel (nE - 1)) :: List.tl ctxe in
+  let default_ctx = LocalAssum (Name name_err, mkRel (nE - 1)) :: List.tl ctxe in
   let default_case =
     (** Transform [Ind{I} params indices] into [Cstr{Iᴱ} params indices] *)
     let (ind, args) = Termops.decompose_app_vect sigma (get_type (List.hd ctxe)) in
@@ -192,8 +203,10 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
     let args = Array.map (fun c -> Vars.lift 1 c) args in
     mkApp (mkConstructU ((ind, err), u), Array.append args [|mkRel 1|])
   in
-  let reT = Vars.subst1 default_case (Vars.liftn 1 2 reT) in
-  let default = mkApp (err, [|mkRel nE; reT; mkRel 1|]) in
+  let (sigma, re, default) = otranslate_type_and_err env' sigma r in
+  let re = it_mkLambda_or_LetIn re ctxe in
+  let default = Vars.subst1 default_case (Vars.liftn 1 2 default) in
+  let default = mkApp (default, [|mkRel 1|]) in
   let default = it_mkLambda_or_LetIn default default_ctx in
   let pe = Array.append pe [|default|] in
   let r = mkCase (cie, re, ce, pe) in
@@ -243,6 +256,35 @@ and otranslate_type env sigma t = match EConstr.kind sigma t with
   let (sigma, t_) = element env sigma t_ in
   (sigma, t_)
 
+and otranslate_type_and_err env sigma t = match EConstr.kind sigma t with
+| App (c, args) when isInd sigma c ->
+  let (ind, u) = destInd sigma c in
+  let fold sigma c = otranslate env sigma c in
+  let (sigma, args) = Array.fold_map fold sigma args in
+  let (sigma, c) = apply_global env sigma (IndRef ind) in
+  let (sigma, ind_def) = mk_default_ind env sigma (ind, u) in
+  let ind_def = mkApp (ind_def, args) in
+  (sigma, mkApp (c, args), ind_def)
+| Ind (ind, u) ->
+  let (sigma, c) = apply_global env sigma (IndRef ind) in
+  let (sigma, ind_def) = mk_default_ind env sigma (ind, u) in
+  (sigma, c, ind_def)
+| Prod (na, t, u) ->
+  let (sigma, te) = otranslate_type env sigma t in
+  let env = push_assum na (t, te) env in
+  let (sigma, ue, def) = otranslate_type_and_err env sigma u in
+  let def = mkApp (Vars.liftn 1 2 def, [| mkRel 2 |]) in
+  let e = mkRel (Environ.nb_rel env.env_tgt - 1) in
+  let prod_def = mkLambda (Name name_err, e, mkLambda (na, Vars.lift 1 te, def)) in
+  (sigma, mkProd (na, te, ue), prod_def)
+| _ ->
+  let (sigma, t_) = otranslate env sigma t in
+  let (sigma, err) = fresh_global env sigma err_e in
+  let e = mkRel (Environ.nb_rel env.env_tgt) in
+  let t_def = mkApp (err, [|e; t_|]) in
+  let (sigma, t_) = element env sigma t_ in
+  (sigma, t_, t_def)
+
 and otranslate_context env sigma = function
 | [] -> sigma, env, []
 | LocalAssum (na, t) :: params ->
@@ -257,7 +299,7 @@ and otranslate_context env sigma = function
 
 let make_context translator env sigma =
   let (sigma, s) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env sigma InType in
-  let e = Id.of_string "E" in
+  let e = name_errtype in
   let env_tgt = Environ.push_rel (LocalAssum (Name e, Constr.mkSort s)) env in
   let env = {
     translator;
@@ -280,6 +322,7 @@ let translate translator env sigma c =
   let (sigma, c_) = otranslate env sigma c in
   let decl = get_exception env in
   let c_ = mkLambda_or_LetIn decl c_ in
+  let () = Feedback.msg_notice (Printer.pr_econstr_env env.env_src sigma c_) in
   let (sigma, _) = Typing.type_of env.env_src sigma c_ in
   (sigma, c_)
 
