@@ -318,10 +318,11 @@ let translate_inductive_body env sigma mind0 mind n ind0 ind =
   | LocalAssum _ -> (succ n, mkRel n :: accu)
   | LocalDef _ -> (succ n, accu)
   in
-  let (_, fail_args) = List.fold_left fail_arg (1, []) (Environ.rel_context arity_env.env_tgt) in
-  let n = 1 + n + Environ.nb_rel arity_env.env_tgt in
+  let (_, fail_args) = List.fold_left fail_arg (2, []) (Environ.rel_context arity_env.env_tgt) in
+  let n = 2 + n + Environ.nb_rel arity_env.env_tgt in
   let fail_case = applist (mkRel n, fail_args) in
-  let fail_case = it_mkProd_or_LetIn fail_case arity_ctx' in
+  let fail_ctx = LocalAssum (Anonymous, mkRel (1 + List.length ind0.mind_arity_ctxt)) :: arity_ctx' in
+  let fail_case = it_mkProd_or_LetIn fail_case fail_ctx in
   let ind = { ind with
     mind_entry_typename = typename;
     mind_entry_arity = EConstr.to_constr sigma arity;
