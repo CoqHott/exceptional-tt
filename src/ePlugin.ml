@@ -186,7 +186,7 @@ let refresh_polymorphic_type_of_inductive (_,mip) =
       mkArity (List.rev ctx, Type ar.template_level), true
 
 let process_inductive mib =
-  let nparams = mib.mind_nparams in
+  let nparams = Context.Rel.length mib.mind_params_ctxt in
   let ind_univs = match mib.mind_universes with
   | Monomorphic_ind ctx -> Monomorphic_ind_entry ctx
   | Polymorphic_ind auctx ->
