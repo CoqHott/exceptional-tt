@@ -46,6 +46,7 @@ let effect_path =
 let make_kn name =
   KerName.make2 (MPfile effect_path) (Label.make name)
 
+let prop_e = ConstRef (Constant.make1 (make_kn "Propᵉ"))
 let type_e = ConstRef (Constant.make1 (make_kn "Typeᵉ"))
 let el_e = ConstRef (Constant.make1 (make_kn "El"))
 let prod_e = ConstRef (Constant.make1 (make_kn "Prodᵉ"))
@@ -127,10 +128,10 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
 | Sort s ->
   begin match EConstr.ESorts.kind sigma s with
   | Prop Null ->
-    CErrors.user_err (str "Prop not handled yet")
-  | Prop Pos ->
-    assert false
-  | Type _ ->
+    let e = mkRel (Environ.nb_rel env.env_tgt) in
+    let (sigma, t) = fresh_global env sigma prop_e in
+    sigma, mkApp (t, [|e|])
+  | Prop Pos | Type _ ->
     let e = mkRel (Environ.nb_rel env.env_tgt) in
     let (sigma, t) = fresh_global env sigma type_e in
     sigma, mkApp (t, [|e|])
