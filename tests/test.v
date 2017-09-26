@@ -37,3 +37,6 @@ match b with
 end.
 
 Effect Translate test.
+
+Effect Translate eq_trans.
+Effect Translate eq_trans_assoc.
