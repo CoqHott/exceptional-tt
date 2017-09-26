@@ -40,3 +40,7 @@ Effect Translate test.
 
 Effect Translate eq_trans.
 Effect Translate eq_trans_assoc.
+
+Definition qux (A : Type) := list (A -> A).
+
+Effect Translate qux.

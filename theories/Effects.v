@@ -26,9 +26,9 @@ Definition Typeᵉ@{i j k} (E : Type@{i}) : type@{i k} E :=
 
 Arguments Typeᵉ {_}.
 
-Definition Prodᵉ@{i j k l} (E : Type@{i}) (A : type@{i j} E)
-  (B : El A -> type@{i k} E) : type@{i l} E :=
-  TypeVal E (forall x : El A, El (B x)) (fun e x => Err (B x) e).
+Definition Prodᵉ@{i j k l} (E : Type@{i}) (A : Type@{j})
+  (B : A -> type@{i k} E) : type@{i l} E :=
+  TypeVal E (forall x : A, El (B x)) (fun e x => Err (B x) e).
 
 (** Special handling of the Prop sort *)
 

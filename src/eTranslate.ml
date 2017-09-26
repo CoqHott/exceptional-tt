@@ -145,11 +145,10 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
 | Prod (na, t, u) ->
   let e = mkRel (Environ.nb_rel env.env_tgt) in
   let (sigma, p) = fresh_global env sigma prod_e in
-  let (sigma, te) = otranslate env sigma t in
-  let (sigma, tTe) = element env sigma te in
-  let env = push_assum na (t, tTe) env in
+  let (sigma, te) = otranslate_type env sigma t in
+  let env = push_assum na (t, te) env in
   let (sigma, ue) = otranslate env sigma u in
-  let ue = mkLambda (na, tTe, ue) in
+  let ue = mkLambda (na, te, ue) in
   let r = mkApp (p, [|e; te; ue|]) in
   (sigma, r)
 | Lambda (na, t, u) ->
