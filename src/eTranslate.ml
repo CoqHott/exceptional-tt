@@ -322,7 +322,6 @@ let translate translator env sigma c =
   let (sigma, c_) = otranslate env sigma c in
   let decl = get_exception env in
   let c_ = mkLambda_or_LetIn decl c_ in
-  let () = Feedback.msg_notice (Printer.pr_econstr_env env.env_src sigma c_) in
   let (sigma, _) = Typing.type_of env.env_src sigma c_ in
   (sigma, c_)
 
