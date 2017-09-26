@@ -51,6 +51,7 @@ let type_e = ConstRef (Constant.make1 (make_kn "Typeᵉ"))
 let el_e = ConstRef (Constant.make1 (make_kn "El"))
 let prod_e = ConstRef (Constant.make1 (make_kn "Prodᵉ"))
 let err_e = ConstRef (Constant.make1 (make_kn "Err"))
+let typeval_e = ConstructRef ((MutInd.make1 (make_kn "type"), 0), 1)
 
 let dummy = mkProp
 
@@ -164,6 +165,8 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   let (sigma, ue) = otranslate env sigma u in
   let r = mkLetIn (na, ce, te, ue) in
   (sigma, r)
+| App (t, args) when isInd sigma t ->
+  otranslate_ind env sigma (destInd sigma t) args
 | App (t, args) ->
   let (sigma, te) = otranslate env sigma t in
   let fold (sigma, argse) arg =
@@ -179,9 +182,8 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
 | Const (p, _) ->
   let (sigma, c) = apply_global env sigma (ConstRef p) in
   (sigma, c)
-| Ind (ind, _) ->
-  let (sigma, c) = apply_global env sigma (IndRef ind) in
-  (sigma, c)
+| Ind (ind, u) ->
+  otranslate_ind env sigma (ind, u) [||]
 | Construct (c, _) ->
   let (sigma, c) = apply_global env sigma (ConstructRef c) in
   (sigma, c)
@@ -285,6 +287,24 @@ and otranslate_type_and_err env sigma t = match EConstr.kind sigma t with
   let t_def = mkApp (err, [|e; t_|]) in
   let (sigma, t_) = element env sigma t_ in
   (sigma, t_, t_def)
+
+(** Special handling of potentially partially applied inductive types not to
+    clutter the translation *)
+and otranslate_ind env sigma (ind, u) args =
+  let (mib, mip) = Inductive.lookup_mind_specif env.env_src ind in
+  let e = mkRel (Environ.nb_rel env.env_tgt) in
+  let (sigma, c) = apply_global env sigma (IndRef ind) in
+  let (sigma, typeval) = fresh_global env sigma typeval_e in
+  let fold sigma c = otranslate env sigma c in
+  let (sigma, args) = Array.fold_map fold sigma args in
+  let (sigma, def) = mk_default_ind env sigma (ind, u) in
+  if Int.equal (Array.length args) (mib.mind_nparams + mip.mind_nrealargs) then
+    (** Fully applied *)
+    let r = mkApp (typeval, [| e; mkApp (c, args); mkApp (def, args) |]) in
+    (sigma, r)
+  else
+    (** Partially applied, we need to eta-expand it. *)
+    assert false
 
 and otranslate_context env sigma = function
 | [] -> sigma, env, []
