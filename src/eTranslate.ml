@@ -123,6 +123,7 @@ let mk_default_ind env sigma (ind, u) =
   let r = mkApp (mkConstructU ((ind, err), EInstance.make u), [|e|]) in
   (sigma, r)
 
+(* From Γ ⊢ M : A produce [M] s.t. ⟦Γ⟧ ⊢ [M] : ⟦A⟧. *)
 let rec otranslate env sigma c = match EConstr.kind sigma c with
 | Rel n ->
   (sigma, mkRel n)
@@ -230,7 +231,8 @@ and otranslate_recdef env sigma (nas, tys, bodies) =
   let (sigma, bodiese) = Array.fold_left_map (fun sigma c -> otranslate env sigma c) sigma bodies in
   (sigma, (nas, tyse, bodiese))
 
-(** Special handling of types not to clutter the translation *)
+(* Special handling of types not to clutter the translation.
+   From Γ ⊢ A : Type produce ⟦A⟧ s.t. ⟦Γ⟧ ⊢ ⟦A⟧ : Type. *)
 and otranslate_type env sigma t = match EConstr.kind sigma t with
 | App (c, args) when isInd sigma c ->
   let (ind, _) = destInd sigma c in
@@ -251,6 +253,9 @@ and otranslate_type env sigma t = match EConstr.kind sigma t with
   let (sigma, t_) = element env sigma t_ in
   (sigma, t_)
 
+(* From Γ ⊢ A : Type produce
+   - ⟦A⟧ s.t. ⟦Γ⟧ ⊢ ⟦A⟧ : Type
+   - [A]ᴱ s.t. ⟦Γ⟧ ⊢ [A]ᴱ : E → ⟦A⟧ *)
 and otranslate_type_and_err env sigma t = match EConstr.kind sigma t with
 | App (c, args) when isInd sigma c ->
   let (ind, u) = destInd sigma c in
@@ -298,6 +303,7 @@ and otranslate_ind env sigma (ind, u) args =
     (** Partially applied, we need to eta-expand it. *)
     assert false
 
+(* From ⊢ Γ produce ⊢ ⟦Γ⟧ *)
 and otranslate_context env sigma = function
 | [] -> sigma, env, []
 | LocalAssum (na, t) :: params ->
