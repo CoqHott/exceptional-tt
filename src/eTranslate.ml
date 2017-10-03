@@ -127,16 +127,9 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
 | Rel n ->
   (sigma, mkRel n)
 | Sort s ->
-  begin match EConstr.ESorts.kind sigma s with
-  | Prop Null ->
-    let e = mkRel (Environ.nb_rel env.env_tgt) in
-    let (sigma, t) = fresh_global env sigma prop_e in
-    sigma, mkApp (t, [|e|])
-  | Prop Pos | Type _ ->
-    let e = mkRel (Environ.nb_rel env.env_tgt) in
-    let (sigma, t) = fresh_global env sigma type_e in
-    sigma, mkApp (t, [|e|])
-  end
+  let e = mkRel (Environ.nb_rel env.env_tgt) in
+  let (sigma, t) = fresh_global env sigma type_e in
+  sigma, mkApp (t, [|e|])
 | Cast (c, k, t) ->
   let (sigma, ce) = otranslate env sigma c in
   let (sigma, te) = otranslate_type env sigma t in
