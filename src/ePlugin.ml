@@ -99,7 +99,7 @@ let translate_constant translator cst ids =
   let sigma = !evdref in
   let body = EConstr.to_constr sigma body in
   let typ = EConstr.to_constr sigma typ in
-  let (_, uctx) = Evd.universe_context sigma in
+  let uctx = UState.context (Evd.evar_universe_context sigma) in
   let cst_ = declare_constant id uctx body typ in
   [ConstRef cst, ConstRef cst_]
 

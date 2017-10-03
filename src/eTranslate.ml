@@ -608,7 +608,7 @@ let translate_inductive translator env mind0 (mind : Entries.mutual_inductive_en
   let sigma, inds = List.fold_left_map map sigma inds in
   let sigma, inds, params = retype_inductive env.env_tgt sigma (EConstr.rel_context env.env_tgt) inds in
   let params = List.map to_local_entry params in
-  let (_, uctx) = Evd.universe_context sigma in
+  let uctx = UState.context (Evd.evar_universe_context sigma) in
   let univs = match mind.mind_entry_universes with
   | Monomorphic_ind_entry _ -> Monomorphic_ind_entry uctx
   | Polymorphic_ind_entry _ -> Polymorphic_ind_entry uctx
