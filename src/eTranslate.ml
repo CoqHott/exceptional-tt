@@ -14,7 +14,8 @@ exception MissingGlobal of global_reference
 exception MissingPrimitive of global_reference
 
 type translator = {
-  refs : global_reference Refmap.t;
+  refs : global_reference Cmap.t;
+  inds : MutInd.t Mindmap.t
 }
 
 type context = {
@@ -60,20 +61,22 @@ let name_err = Id.of_string "e"
 
 (** Handling of globals *) 
 
-let get_global env gr =
-  try Refmap.find gr env.translator.refs
-  with Not_found -> raise (MissingGlobal gr)
+let get_cst env cst =
+  try Cmap.find cst env.translator.refs
+  with Not_found -> raise (MissingGlobal (ConstRef cst))
+
+let get_ind env (ind, n) =
+  try (Mindmap.find ind env.translator.inds, n)
+  with Not_found -> raise (MissingGlobal (IndRef (ind, n)))
 
 let apply_global env sigma gr =
   let gr = match gr with
   | ConstructRef (ind, n) ->
-    let ind = match get_global env (IndRef ind) with
-    | IndRef ind -> ind
-    | _ -> assert false
-    in
+    let ind = get_ind env ind in
     ConstructRef (ind, n)
-  | gr ->
-    get_global env gr
+  | IndRef ind -> IndRef (get_ind env ind)
+  | ConstRef cst -> get_cst env cst
+  | VarRef _ -> CErrors.user_err (str "Variables not handled")
   in
   let (sigma, c) = Evd.fresh_global env.env_tgt sigma gr in
   let c = EConstr.of_constr c in
@@ -95,10 +98,7 @@ let element env sigma c =
 
 let translate_case_info env sigma ci mip =
   let nrealdecls = mip.mind_nrealdecls in
-  let ci_ind = match get_global env (IndRef ci.ci_ind) with
-  | IndRef ind -> ind
-  | _ -> assert false
-  in
+  let ci_ind = get_ind env ci.ci_ind in
   let ci_npar = ci.ci_npar + 1 in
   let ci_cstr_ndecls = Array.append ci.ci_cstr_ndecls [|1 + nrealdecls|] in
   let ci_cstr_nargs = Array.append ci.ci_cstr_nargs [|1 + mip.mind_nrealargs|] in
@@ -115,10 +115,7 @@ let mk_default_ind env sigma (ind, u) =
   let e = mkRel (Environ.nb_rel env.env_tgt) in
   let (_, mip) = Inductive.lookup_mind_specif env.env_src ind in
   let err = Array.length mip.mind_consnames + 1 in
-  let ind = match get_global env (IndRef ind) with
-  | IndRef ind -> ind
-  | _ -> assert false
-  in
+  let ind = get_ind env ind in
   let (sigma, (ind, u)) = Evd.fresh_inductive_instance env.env_tgt sigma ind in
   let r = mkApp (mkConstructU ((ind, err), EInstance.make u), [|e|]) in
   (sigma, r)
@@ -401,12 +398,7 @@ let extend_inductive env mind0 mind =
   let ind_name = Lib.make_kn (translate_internal_name mind0.mind_packets.(0).mind_typename) in
   let mind = MutInd.make1 ind_name in
   let env_tgt = Environ.add_mind mind mbi env.env_tgt in
-  let fold (n, accu) _ =
-    let gr = IndRef (mind, n) in
-    let accu = { refs = Refmap.add gr gr accu.refs } in
-    (succ n, accu)
-  in
-  let _, translator = Array.fold_left fold (0, env.translator) mind0.mind_packets in 
+  let translator = { env.translator with inds = Mindmap.add mind mind env.translator.inds } in
   mind, { env with translator; env_tgt }
 
 let abstract_mind sigma mind n k c =

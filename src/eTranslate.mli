@@ -6,7 +6,8 @@ exception MissingGlobal of global_reference
 exception MissingPrimitive of global_reference
 
 type translator = {
-  refs : global_reference Refmap.t;
+  refs : global_reference Cmap.t;
+  inds : MutInd.t Mindmap.t
 }
 
 val translate :
