@@ -371,22 +371,21 @@ let ptranslate ?exn ?names gr =
   let msg = prlist_with_sep fnl msg_translate ans in
   Feedback.msg_info msg
 
-(*
 (** Implementation in the forcing layer *)
 
-let implement eff id typ idopt =
-  let (eff, translator) = get_translator eff in
+let implement ?exn id typ =
   let env = Global.env () in
-  let id_ = match idopt with
-  | None -> translate_name id
-  | Some id -> id
-  in
+  let translator = !translator in
+  let err = Option.map Nametab.global exn in
+  let id_ = translate_name id in
   let kind = Global, false, DefinitionBody Definition in
   let sigma = Evd.from_env env in
   let (typ, uctx) = Constrintern.interp_type env sigma typ in
+  let typ = EConstr.of_constr typ in
+  let (sigma, typ) = solve_evars env sigma typ in
   let sigma = Evd.from_ctx uctx in
-  let (sigma, translator) = ETranslate.make_context translator env sigma in
-  let (sigma, typ_) = ETranslate.translate_type translator sigma typ in
+  let (sigma, typ_) = ETranslate.translate_type err translator env sigma typ in
+  let typ = EConstr.to_constr sigma typ in
   let (sigma, _) = Typing.type_of env sigma typ_ in
   let hook _ dst =
     (** Declare the original term as an axiom *)
@@ -394,13 +393,13 @@ let implement eff id typ idopt =
     let cb = Entries.ParameterEntry param in
     let cst = Declare.declare_constant id (cb, IsDefinition Definition) in
     (** Attach the axiom to the forcing implementation *)
-    Lib.add_anonymous_leaf (in_translator (ExtendEffect (eff, [ConstRef cst, dst])))
+    let ext = ExtendEffect (ExtEffect, err, [ExtConstant (cst, dst)]) in
+    Lib.add_anonymous_leaf (in_translator ext)
   in
   let hook ctx = Lemmas.mk_hook hook in
   let sigma, _ = Typing.type_of env sigma typ_ in
   let () = Lemmas.start_proof_univs id_ kind sigma typ_ hook in
   ()
-*)
 
 (** Error handling *)
 
