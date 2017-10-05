@@ -536,6 +536,14 @@ let translate translator env0 sigma c =
   *)
   (sigma, c_)
 
+let ptranslate translator env0 sigma c =
+  let (sigma, env) = make_pcontext translator env0 sigma in
+  let (sigma, cr) = optranslate env sigma c in
+  let decl = get_pexception env in
+  let cr = mkLambda_or_LetIn decl cr in
+  let (sigma, _) = Typing.type_of env.penv_src sigma cr in
+  (sigma, cr)
+
 let translate_type translator env sigma c =
   let (sigma, env) = make_context translator env sigma in
   let (sigma, c_) = otranslate_type env sigma c in
@@ -543,6 +551,20 @@ let translate_type translator env sigma c =
   let c_ = mkProd_or_LetIn decl c_ in
   let (sigma, _) = Typing.type_of env.env_src sigma c_ in
   (sigma, c_)
+
+(* From ⊢ A : Type produce Ap s.t. ⊢ Ap : (forall E : Type, ⟦A⟧) -> Type. *)
+let ptranslate_type translator env0 sigma c =
+  let (sigma, env) = make_pcontext translator env0 sigma in
+  let (sigma, c_) = otranslate_type (project env) sigma c in
+  let decl = get_exception (project env) in
+  let c_ = mkProd_or_LetIn decl c_ in
+  let (sigma, cr) = optranslate_type env sigma c in
+  let cr = Vars.subst1 (mkApp (mkRel 2, [| mkRel 1|])) (Vars.liftn 1 3 cr) in
+  let decl = get_pexception env in
+  let cr = mkProd_or_LetIn decl cr in
+  let nenv = EConstr.push_rel (LocalAssum (Anonymous, c_)) env.penv_src in
+  let (sigma, _) = Typing.type_of nenv sigma cr in
+  (sigma, cr)
 
 let translate_name id =
   let id = Id.to_string id in

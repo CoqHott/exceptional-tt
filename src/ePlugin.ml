@@ -20,6 +20,10 @@ let translate_internal_name id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᵒ")
 
+let ptranslate_name id =
+  let id = Id.to_string id in
+  Id.of_string (id ^ "ε")
+
 (** Record of translation between globals *)
 
 type translator = ETranslate.translator
@@ -34,9 +38,13 @@ let empty_translator = {
 let translator : translator ref =
   Summary.ref ~name:"Effect Global Table" empty_translator
 
+type extension_type =
+| ExtEffect
+| ExtParam
+
 type extension =
-| ExtConstant of Constant.t * global_reference
-| ExtInductive of MutInd.t * MutInd.t
+| ExtConstant of extension_type * Constant.t * global_reference
+| ExtInductive of extension_type * MutInd.t * MutInd.t
 
 type translator_obj =
 | ExtendEffect of extension list
@@ -44,8 +52,14 @@ type translator_obj =
 let extend_translator tr l =
   let open ETranslate in
   let fold accu = function
-  | ExtConstant (cst, gr) -> { accu with refs = Cmap.add cst gr accu.refs }
-  | ExtInductive (mind, mind') -> { accu with inds = Mindmap.add mind mind' accu.inds }
+  | ExtConstant (ExtEffect, cst, gr) ->
+    { accu with refs = Cmap.add cst gr accu.refs }
+  | ExtInductive (ExtEffect, mind, mind') ->
+    { accu with inds = Mindmap.add mind mind' accu.inds }
+  | ExtConstant (ExtParam, cst, gr) ->
+    { accu with prefs = Cmap.add cst gr accu.prefs }
+  | ExtInductive (ExtParam, mind, mind') ->
+    { accu with pinds = Mindmap.add mind mind' accu.pinds }
   in
   List.fold_left fold tr l
 
@@ -57,16 +71,16 @@ let load_translator _ obj = cache_translator obj
 let open_translator _ obj = cache_translator obj
 
 let subst_extension subst ext = match ext with
-| ExtConstant (cst, gr) ->
+| ExtConstant (knd, cst, gr) ->
   let cst' = subst_constant subst cst in
   let gr' = subst_global_reference subst gr in
   if cst' == cst && gr' == gr then ext
-  else ExtConstant (cst', gr')
-| ExtInductive (smind, tmind) ->
+  else ExtConstant (knd, cst', gr')
+| ExtInductive (knd, smind, tmind) ->
   let smind' = subst_mind subst smind in
   let tmind' = subst_mind subst tmind in
   if smind' == smind && tmind' == tmind then ext
-  else ExtInductive (smind', tmind')
+  else ExtInductive (knd, smind', tmind')
 
 let subst_translator (subst, obj) = match obj with
 | ExtendEffect l ->
@@ -96,26 +110,23 @@ let declare_constant id uctx c t =
   let cst_ = Declare.declare_constant id decl in
   cst_
 
+let on_one_id f ids cst = match ids with
+| None -> f (Nametab.basename_of_global (ConstRef cst))
+| Some [id] -> id
+| Some _ -> user_err (str "Not the right number of provided names")
+
 let translate_constant translator cst ids =
-  let id = match ids with
-  | None -> translate_name (Nametab.basename_of_global (ConstRef cst))
-  | Some [id] -> id
-  | Some _ -> user_err (str "Not the right number of provided names")
-  in
+  let id = on_one_id translate_name ids cst in
   (** Translate the type *)
   let env = Global.env () in
   let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
   let typ = EConstr.of_constr typ in
   let sigma = Evd.from_env env in
   let (sigma, typ) = ETranslate.translate_type translator env sigma typ in
-  let (sigma, typ) = solve_evars env sigma typ in
   let sigma, _ = Typing.type_of env sigma typ in
-  let _uctx = Evd.evar_universe_context sigma in
-  (** Define the term by tactic *)
   let (body, _) = Option.get (Global.body_of_constant cst) in
   let body = EConstr.of_constr body in
   let (sigma, body) = ETranslate.translate translator env sigma body in
-  let (sigma, body) = solve_evars env sigma body in
   let evdref = ref sigma in
   let () = Typing.e_check env evdref body typ in
   let sigma = !evdref in
@@ -123,7 +134,34 @@ let translate_constant translator cst ids =
   let typ = EConstr.to_constr sigma typ in
   let uctx = UState.context (Evd.evar_universe_context sigma) in
   let cst_ = declare_constant id uctx body typ in
-  [ExtConstant (cst, ConstRef cst_)]
+  [ExtConstant (ExtEffect, cst, ConstRef cst_)]
+
+let ptranslate_constant translator cst ids =
+  let id = on_one_id ptranslate_name ids cst in
+  (** Translate the type *)
+  let env = Global.env () in
+  let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
+  let c_ =
+    try Cmap.find cst translator.ETranslate.refs
+    with Not_found -> raise (ETranslate.MissingGlobal (ConstRef cst))
+  in
+  let typ = EConstr.of_constr typ in
+  let sigma = Evd.from_env env in
+  let (sigma, typ) = ETranslate.ptranslate_type translator env sigma typ in
+  let (sigma, c_) = Evd.fresh_global env sigma c_ in
+  let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
+  let sigma, _ = Typing.type_of env sigma typ in
+  let (body, _) = Option.get (Global.body_of_constant cst) in
+  let body = EConstr.of_constr body in
+  let (sigma, body) = ETranslate.ptranslate translator env sigma body in
+  let evdref = ref sigma in
+  let () = Typing.e_check env evdref body typ in
+  let sigma = !evdref in
+  let body = EConstr.to_constr sigma body in
+  let typ = EConstr.to_constr sigma typ in
+  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  let cst_ = declare_constant id uctx body typ in
+  [ExtConstant (ExtParam, cst, ConstRef cst_)]
 
 let sort_of_elim sigma body =
   let open Declarations in
@@ -250,7 +288,7 @@ let translate_inductive_aux translator env mind =
 
 (** Register the wrapping of the inductive type and its constructors *)
 let translate_inductive_defs translator ind ind_ mind mind_ =
-  [ExtInductive (ind, ind_)]
+  [ExtInductive (ExtEffect, ind, ind_)]
 
 let translate_inductive translator ind =
   let open Declarations in
@@ -262,6 +300,20 @@ let translate_inductive translator ind =
   let mind_ = Global.lookup_mind ind_ in
   translate_inductive_defs translator (fst ind) ind_ mind mind_
 
+let msg_translate = function
+| ExtConstant (_, cst, gr) ->
+  (str "Global " ++ Printer.pr_global (ConstRef cst) ++
+  str " has been translated as " ++ Printer.pr_global gr ++ str ".")
+| ExtInductive (_, smind, tmind) ->
+  let mib = Global.lookup_mind smind in
+  let len = Array.length mib.Declarations.mind_packets in
+  let l = List.init len (fun n -> (IndRef (smind, n), IndRef (tmind, n))) in
+  let pr (src, dst) =
+    (str "Global " ++ Printer.pr_global src ++
+    str " has been translated as " ++ Printer.pr_global dst ++ str ".")
+  in
+  prlist_with_sep fnl pr l
+
 let translate gr ids =
   let gr = Nametab.global gr in
   let translator = !translator in
@@ -271,21 +323,19 @@ let translate gr ids =
   | _ -> user_err (str "Translation not handled.")
   in
   let () = Lib.add_anonymous_leaf (in_translator (ExtendEffect ans)) in
-  let msg_translate = function
-  | ExtConstant (cst, gr) ->
-    Feedback.msg_info (str "Global " ++ Printer.pr_global (ConstRef cst) ++
-    str " has been translated as " ++ Printer.pr_global gr ++ str ".")
-  | ExtInductive (smind, tmind) ->
-    let mib = Global.lookup_mind smind in
-    let len = Array.length mib.Declarations.mind_packets in
-    let l = List.init len (fun n -> (IndRef (smind, n), IndRef (tmind, n))) in
-    let pr (src, dst) =
-      Feedback.msg_info (str "Global " ++ Printer.pr_global src ++
-      str " has been translated as " ++ Printer.pr_global dst ++ str ".")
-    in
-    List.iter pr l
+  let msg = prlist_with_sep fnl msg_translate ans in
+  Feedback.msg_info msg
+
+let ptranslate gr ids =
+  let gr = Nametab.global gr in
+  let translator = !translator in
+  let ans = match gr with
+  | ConstRef cst -> ptranslate_constant translator cst ids
+  | _ -> user_err (str "Translation not handled.")
   in
-  List.iter msg_translate ans
+  let () = Lib.add_anonymous_leaf (in_translator (ExtendEffect ans)) in
+  let msg = prlist_with_sep fnl msg_translate ans in
+  Feedback.msg_info msg
 
 (*
 (** Implementation in the forcing layer *)

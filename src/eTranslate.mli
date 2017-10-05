@@ -21,3 +21,9 @@ val translate_type :
 val translate_inductive :
   translator -> Environ.env -> Declarations.mutual_inductive_body ->
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
+
+val ptranslate :
+  translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
+
+val ptranslate_type :
+  translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
