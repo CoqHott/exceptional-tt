@@ -16,8 +16,9 @@ Fixpoint nat_valid {E} (n : natᵒ E) := match n with
 | natᴱ _ _ => false
 end.
 
-Definition ip : El (IPᵉ unit).
+Effect Definition ip : IP using unit.
 Proof.
+intros E.
 cbn in *.
 refine (fun A B f => _).
 pose (ans := f (fun _ => Falseᴱ _ tt)).
@@ -154,10 +155,10 @@ Definition projT2ε {E A Aε B Bε} (p : @sigTᵒ E A B) (pε : @sigTε E A Aε 
   | existTε _ _ _ _ _ _ _ yε => yε
   end.
 
-Lemma ipε : ip_param ip.
+Lemma ipε : ip_param ipᵉ.
 Proof.
 intros A Aε B Bε p pε; cbn in *.
-unfold ip.
+unfold ipᵉ.
 specialize (pε (fun _ : El A => Falseᴱ unit tt)).
 set (p₀ := p (fun _ : El A => Falseᴱ unit tt)) in *.
 clearbody p₀; clear p.
