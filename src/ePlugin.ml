@@ -170,7 +170,7 @@ let ptranslate_constant err translator cst ids =
   let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
   let gen, c_ =
     try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
-    with Not_found -> raise (ETranslate.MissingGlobal (ConstRef cst))
+    with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
   in
   let typ = EConstr.of_constr typ in
   let sigma = Evd.from_env env in
@@ -410,9 +410,12 @@ let pr_global = function
 | ConstructRef ((ind, _), _) -> str "Inductive " ++ MutInd.print ind
 
 let _ = register_handler begin function
-| ETranslate.MissingGlobal gr ->
-  let ref = Nametab.shortest_qualid_of_global Id.Set.empty gr in
-  str "No translation for global " ++ Libnames.pr_qualid ref ++ str "."
+| ETranslate.MissingGlobal (eff, gr) ->
+  let eff = match eff with
+  | None -> str "for generic exceptions"
+  | Some gr -> str "for instance" ++ spc () ++ Printer.pr_global gr
+  in
+  str "No translation for global " ++ Printer.pr_global gr ++ spc () ++ eff ++ str "."
 | ETranslate.MissingPrimitive gr ->
   let ref = pr_global gr in
   str "Missing primitive: " ++ ref ++ str "."

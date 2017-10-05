@@ -10,7 +10,9 @@ open Environ
 open Globnames
 open Pp
 
-exception MissingGlobal of global_reference
+type effect = global_reference option
+
+exception MissingGlobal of effect * global_reference
 exception MissingPrimitive of global_reference
 
 type 'a global_translation =
@@ -122,23 +124,23 @@ let get_instance err = function
 
 let get_cst env cst =
   try get_instance env.error (Cmap.find cst env.translator.refs)
-  with Not_found -> raise (MissingGlobal (ConstRef cst))
+  with Not_found -> raise (MissingGlobal (env.error, ConstRef cst))
 
 let get_ind env (ind, n) =
   try
     let gen, ind = get_instance env.error (Mindmap.find ind env.translator.inds) in
     gen, (ind, n)
-  with Not_found -> raise (MissingGlobal (IndRef (ind, n)))
+  with Not_found -> raise (MissingGlobal (env.error, IndRef (ind, n)))
 
 let get_pcst env cst =
   try get_instance env.perror (Cmap.find cst env.ptranslator.prefs)
-  with Not_found -> raise (MissingGlobal (ConstRef cst))
+  with Not_found -> raise (MissingGlobal (env.perror, ConstRef cst))
 
 let get_pind env (ind, n) =
   try
     let gen, ind = get_instance env.perror (Mindmap.find ind env.ptranslator.pinds) in
     gen, (ind, n)
-  with Not_found -> raise (MissingGlobal (IndRef (ind, n)))
+  with Not_found -> raise (MissingGlobal (env.perror, IndRef (ind, n)))
 
 let apply_global env sigma gr =
   let gen, gr = match gr with
