@@ -599,14 +599,18 @@ let translate_type err translator env sigma c =
   let (sigma, _) = Typing.type_of env.env_src sigma c_ in
   (sigma, c_)
 
-(* From ⊢ A : Type produce Ap s.t. ⊢ Ap : (forall E : Type, ⟦A⟧) -> Type. *)
+(* From ⊢ A : Type produce Ap s.t. (x : forall E : Type, ⟦A⟧) ⊢ Ap : Type. *)
 let ptranslate_type err translator env0 sigma c =
   let (sigma, env) = make_pcontext err translator env0 sigma in
   let (sigma, c_) = otranslate_type (project env) sigma c in
   let decl = get_exception (project env) in
   let c_ = mkProd_or_LetIn decl c_ in
   let (sigma, cr) = optranslate_type env sigma c in
-  let cr = Vars.subst1 (mkApp (mkRel 2, [| mkRel 1|])) (Vars.liftn 1 3 cr) in
+  let arg = match err with
+  | None -> mkApp (mkRel 2, [| mkRel 1 |])
+  | Some _ -> mkRel 2 (** If instantiated to one error type, no need to specialize it *)
+  in
+  let cr = Vars.subst1 arg (Vars.liftn 1 3 cr) in
   let decl = get_pexception env in
   let cr = mkProd_or_LetIn decl cr in
   let nenv = EConstr.push_rel (LocalAssum (Anonymous, c_)) env.penv_src in

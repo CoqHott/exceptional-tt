@@ -176,7 +176,16 @@ let ptranslate_constant err translator cst ids =
   let sigma = Evd.from_env env in
   let (sigma, typ) = ETranslate.ptranslate_type err translator env sigma typ in
   let (sigma, c_) = Evd.fresh_global env sigma c_ in
-  (** FIXME: handle properly mixes of generic and instances *)
+  (** Fix potential mismatch between the generality of parametricity and effect
+      translations *)
+  let (sigma, c_) = match err with
+  | None -> (sigma, c_)
+  | Some err ->
+    if gen then
+      let (sigma, err) = Evd.fresh_global env sigma err in
+      (sigma, mkApp (c_, [| err |]))
+    else (sigma, c_)
+  in
   let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
   let sigma, _ = Typing.type_of env sigma typ in
   let (body, _) = Option.get (Global.body_of_constant cst) in
