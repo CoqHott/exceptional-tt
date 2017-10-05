@@ -200,12 +200,12 @@ let element env sigma c =
 let translate_case_info env sigma ci mip =
   let gen, ci_ind = get_ind env ci.ci_ind in
   let nrealdecls = mip.mind_nrealdecls in
-  let nrealargs = if gen then 1 + mip.mind_nrealargs else mip.mind_nrealargs in
-  let ci_npar = ci.ci_npar + 1 in
+  let nrealargs = mip.mind_nrealargs in
+  let ci_npar = if gen then 1 + ci.ci_npar else ci.ci_npar in
   let ci_cstr_ndecls = Array.append ci.ci_cstr_ndecls [|1 + nrealdecls|] in
-  let ci_cstr_nargs = Array.append ci.ci_cstr_nargs [|nrealargs|] in
+  let ci_cstr_nargs = Array.append ci.ci_cstr_nargs [|1 + nrealargs|] in
   let tags =
-    not gen :: (** additional exception argument *)
+    false :: (** additional exception argument *)
     Context.Rel.to_tags (List.firstn nrealdecls mip.mind_arity_ctxt)
   in
   let ci_pp_info = { ci.ci_pp_info with
