@@ -24,8 +24,15 @@ let translate_internal_name id =
 
 type translator = ETranslate.translator
 
+let empty_translator = {
+  ETranslate.refs = Cmap.empty;
+  inds = Mindmap.empty;
+  prefs = Cmap.empty;
+  pinds = Mindmap.empty;
+}
+
 let translator : translator ref =
-  Summary.ref ~name:"Effect Global Table" { ETranslate.refs = Cmap.empty; ETranslate.inds = Mindmap.empty }
+  Summary.ref ~name:"Effect Global Table" empty_translator
 
 type extension =
 | ExtConstant of Constant.t * global_reference
@@ -76,8 +83,6 @@ let in_translator : translator_obj -> obj =
   }
 
 (** Tactic *)
-
-let empty_translator = Refmap.empty
 
 let solve_evars env sigma c =
   let evdref = ref sigma in

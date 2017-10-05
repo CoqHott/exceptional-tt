@@ -15,7 +15,9 @@ exception MissingPrimitive of global_reference
 
 type translator = {
   refs : global_reference Cmap.t;
-  inds : MutInd.t Mindmap.t
+  inds : MutInd.t Mindmap.t;
+  prefs : global_reference Cmap.t;
+  pinds : MutInd.t Mindmap.t;
 }
 
 type context = {
@@ -64,7 +66,7 @@ let push_passum na (t, te, tr) env =
 let push_pdef na (c, ce, cr) (t, te, tr) env = { env with
   penv_src = EConstr.push_rel (LocalDef (na, c, t)) env.penv_src;
   penv_tgt = EConstr.push_rel (LocalDef (na, ce, te)) env.penv_tgt;
-  penv_ptgt = EConstr.push_rel (LocalDef (pname na, cr, tr)) (EConstr.push_rel (LocalDef (na, plift env ce, plift env te)) env.penv_ptgt);
+  penv_ptgt = EConstr.push_rel (LocalDef (pname na, Vars.lift 1 cr, tr)) (EConstr.push_rel (LocalDef (na, plift env ce, plift env te)) env.penv_ptgt);
 }
 
 let lift_rel_context n ctx =
@@ -109,6 +111,14 @@ let get_ind env (ind, n) =
   try (Mindmap.find ind env.translator.inds, n)
   with Not_found -> raise (MissingGlobal (IndRef (ind, n)))
 
+let get_pcst env cst =
+  try Cmap.find cst env.ptranslator.prefs
+  with Not_found -> raise (MissingGlobal (ConstRef cst))
+
+let get_pind env (ind, n) =
+  try (Mindmap.find ind env.ptranslator.pinds, n)
+  with Not_found -> raise (MissingGlobal (IndRef (ind, n)))
+
 let apply_global env sigma gr =
   let gr = match gr with
   | ConstructRef (ind, n) ->
@@ -121,6 +131,20 @@ let apply_global env sigma gr =
   let (sigma, c) = Evd.fresh_global env.env_tgt sigma gr in
   let c = EConstr.of_constr c in
   let e = mkRel (Environ.nb_rel env.env_tgt) in
+  (sigma, mkApp (c, [|e|]))
+
+let apply_pglobal env sigma gr =
+  let gr = match gr with
+  | ConstructRef (ind, n) ->
+    let ind = get_pind env ind in
+    ConstructRef (ind, n)
+  | IndRef ind -> IndRef (get_pind env ind)
+  | ConstRef cst -> get_pcst env cst
+  | VarRef _ -> CErrors.user_err (str "Variables not handled")
+  in
+  let (sigma, c) = Evd.fresh_global env.penv_ptgt sigma gr in
+  let c = EConstr.of_constr c in
+  let e = mkRel (Environ.nb_rel env.penv_ptgt) in
   (sigma, mkApp (c, [|e|]))
 
 let fresh_global env sigma gr =
@@ -369,35 +393,46 @@ let top_decls env =
   List.firstn 2 (EConstr.rel_context env.penv_ptgt)
 
 (* From Γ ⊢ M : A produce [M]ε s.t. ⟦Γ⟧ε ⊢ [M]ε : ⟦A⟧ [M]. *)
-let rec ptranslate env sigma c = match EConstr.kind sigma c with
+let rec optranslate env sigma c = match EConstr.kind sigma c with
 | Rel n ->
   (sigma, mkRel (2 * n - 1))
 | Sort _ | Prod _ ->
   let (sigma, c_) = otranslate_type (project env) sigma c in
   let c_ = plift env c_ in
-  let (sigma, r) = ptranslate_type env sigma c in
+  let (sigma, r) = optranslate_type env sigma c in
   let r = mkLambda (Anonymous, c_, r) in
-  sigma, r
+  (sigma, r)
 | Cast (c, k, t) ->
-  assert false
+  let (sigma, c_) = otranslate (project env) sigma c in
+  let (sigma, cr) = optranslate env sigma c in
+  let (sigma, tr) = optranslate_type env sigma t in
+  let tr = Vars.subst1 (plift env c_) tr in
+  let r = mkCast (cr, k, tr) in
+  (sigma, r)
 | Lambda (na, t, u) ->
   let (sigma, t_) = otranslate_type (project env) sigma t in
-  let (sigma, tr) = ptranslate_type env sigma t in
+  let (sigma, tr) = optranslate_type env sigma t in
   let nenv = push_passum na (t, t_, tr) env in
   let ctx = top_decls nenv in
-  let (sigma, ur) = ptranslate nenv sigma u in
+  let (sigma, ur) = optranslate nenv sigma u in
   let r = it_mkLambda_or_LetIn ur ctx in
   (sigma, r)
 | LetIn (na, c, t, u) ->
-  assert false
-| App (t, args) when isInd sigma t ->
-  assert false
+  let (sigma, c_) = otranslate (project env) sigma c in
+  let (sigma, cr) = optranslate env sigma c in
+  let (sigma, t_) = otranslate_type (project env) sigma t in
+  let (sigma, tr) = optranslate_type env sigma t in
+  let nenv = push_pdef na (c, c_, cr) (t, t_, tr) env in
+  let ctx = top_decls nenv in
+  let (sigma, ur) = optranslate nenv sigma u in
+  let r = it_mkLambda_or_LetIn ur ctx in
+  (sigma, r)
 | App (t, args) ->
-  let (sigma, tr) = ptranslate env sigma t in
+  let (sigma, tr) = optranslate env sigma t in
   let fold t (sigma, accu) =
     let (sigma, t_) = otranslate (project env) sigma t in
     let t_ = plift env t_ in
-    let (sigma, tr) = ptranslate env sigma t in
+    let (sigma, tr) = optranslate env sigma t in
     (sigma, t_ :: tr :: accu)
   in
   let (sigma, argsr) = Array.fold_right fold args (sigma, []) in
@@ -406,11 +441,14 @@ let rec ptranslate env sigma c = match EConstr.kind sigma c with
 | Var id ->
   assert false
 | Const (p, _) ->
-  assert false
-| Ind (ind, u) ->
-  assert false
+  let (sigma, c) = apply_pglobal env sigma (ConstRef p) in
+  (sigma, c)
+| Ind (ind, _) ->
+  let (sigma, c) = apply_pglobal env sigma (IndRef ind) in
+  (sigma, c)
 | Construct (c, _) ->
-  assert false
+  let (sigma, c) = apply_pglobal env sigma (ConstructRef c) in
+  (sigma, c)
 | Case (ci, r, c, p) ->
   assert false
 | Fix (fi, recdef) ->
@@ -422,7 +460,7 @@ let rec ptranslate env sigma c = match EConstr.kind sigma c with
 | Evar _ -> assert false
 
 (* From Γ ⊢ A : Type produce ⟦A⟧ε s.t. ⟦Γ⟧ε, x : ⟦A⟧ ⊢ ⟦A⟧ε : Type. *)
-and ptranslate_type env sigma c = match EConstr.kind sigma c with
+and optranslate_type env sigma c = match EConstr.kind sigma c with
 | Sort s ->
   let (sigma, el) = pfresh_global env sigma el_e in
   let e = mkRel (Environ.nb_rel env.penv_ptgt + 1) in
@@ -431,16 +469,16 @@ and ptranslate_type env sigma c = match EConstr.kind sigma c with
   (sigma, r)
 | Prod (na, t, u) ->
   let (sigma, t_) = otranslate_type (project env) sigma t in
-  let (sigma, tr) = ptranslate_type env sigma t in
+  let (sigma, tr) = optranslate_type env sigma t in
   let nenv = push_passum na (t, t_, tr) env in
-  let (sigma, ur) = ptranslate_type nenv sigma u in
+  let (sigma, ur) = optranslate_type nenv sigma u in
   let ur = Vars.liftn 1 4 ur in
   let ur = Vars.subst1 (mkApp (mkRel 3, [| mkRel 2 |])) ur in
   let ctx = lift_rel_context 1 (top_decls nenv) in
   let r = it_mkProd_or_LetIn ur ctx in
   (sigma, r)
 | _ ->
-  let (sigma, cr) = ptranslate env sigma c in
+  let (sigma, cr) = optranslate env sigma c in
   (sigma, mkApp (Vars.lift 1 cr, [| mkRel 1 |]))
 
 let make_context translator env sigma =
@@ -489,7 +527,7 @@ let translate translator env0 sigma c =
   let () =
     try
       let (sigma, env) = make_pcontext translator env0 sigma in
-      let (sigma, c_) = ptranslate env sigma c in
+      let (sigma, c_) = optranslate env sigma c in
       let decl = get_pexception env in
       let c_ = mkLambda_or_LetIn decl c_ in
       Feedback.msg_notice (Printer.pr_econstr_env env.penv_src sigma c_)
