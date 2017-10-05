@@ -13,15 +13,17 @@ open Pp
 exception MissingGlobal of global_reference
 exception MissingPrimitive of global_reference
 
-type ref_translation =
-| RefGen of global_reference
-| RefImp of global_reference
+type 'a global_translation =
+| GlobGen of 'a
+  (** Implementation generic over the type of exceptions *)
+| GlobImp of 'a Refmap.t
+  (** For every type of exceptions, a specialized implementation. *)
 
 type translator = {
-  refs : global_reference Cmap.t;
-  inds : MutInd.t Mindmap.t;
-  prefs : global_reference Cmap.t;
-  pinds : MutInd.t Mindmap.t;
+  refs : global_reference global_translation Cmap.t;
+  inds : MutInd.t global_translation Mindmap.t;
+  prefs : global_reference global_translation Cmap.t;
+  pinds : MutInd.t global_translation Mindmap.t;
 }
 
 type context = {
@@ -111,49 +113,70 @@ let name_err = Id.of_string "e"
 
 (** Handling of globals *) 
 
+let get_instance err = function
+| GlobGen x -> true, x
+| GlobImp m ->
+  match err with
+  | None -> raise Not_found (** No generic implementation *)
+  | Some gr -> false, Refmap.find gr m
+
 let get_cst env cst =
-  try Cmap.find cst env.translator.refs
+  try get_instance env.error (Cmap.find cst env.translator.refs)
   with Not_found -> raise (MissingGlobal (ConstRef cst))
 
 let get_ind env (ind, n) =
-  try (Mindmap.find ind env.translator.inds, n)
+  try
+    let gen, ind = get_instance env.error (Mindmap.find ind env.translator.inds) in
+    gen, (ind, n)
   with Not_found -> raise (MissingGlobal (IndRef (ind, n)))
 
 let get_pcst env cst =
-  try Cmap.find cst env.ptranslator.prefs
+  try get_instance env.perror (Cmap.find cst env.ptranslator.prefs)
   with Not_found -> raise (MissingGlobal (ConstRef cst))
 
 let get_pind env (ind, n) =
-  try (Mindmap.find ind env.ptranslator.pinds, n)
+  try
+    let gen, ind = get_instance env.perror (Mindmap.find ind env.ptranslator.pinds) in
+    gen, (ind, n)
   with Not_found -> raise (MissingGlobal (IndRef (ind, n)))
 
 let apply_global env sigma gr =
-  let gr = match gr with
+  let gen, gr = match gr with
   | ConstructRef (ind, n) ->
-    let ind = get_ind env ind in
-    ConstructRef (ind, n)
-  | IndRef ind -> IndRef (get_ind env ind)
+    let gen, ind = get_ind env ind in
+    gen, ConstructRef (ind, n)
+  | IndRef ind ->
+    let gen, ind = get_ind env ind in
+    gen, IndRef ind
   | ConstRef cst -> get_cst env cst
   | VarRef _ -> CErrors.user_err (str "Variables not handled")
   in
   let (sigma, c) = Evd.fresh_global env.env_tgt sigma gr in
   let c = EConstr.of_constr c in
-  let e = mkRel (Environ.nb_rel env.env_tgt) in
-  (sigma, mkApp (c, [|e|]))
+  if gen then
+    let e = mkRel (Environ.nb_rel env.env_tgt) in
+    (sigma, mkApp (c, [|e|]))
+  else
+    (sigma, c)
 
 let apply_pglobal env sigma gr =
-  let gr = match gr with
+  let gen, gr = match gr with
   | ConstructRef (ind, n) ->
-    let ind = get_pind env ind in
-    ConstructRef (ind, n)
-  | IndRef ind -> IndRef (get_pind env ind)
+    let gen, ind = get_pind env ind in
+    gen, ConstructRef (ind, n)
+  | IndRef ind ->
+    let gen, ind = get_pind env ind in
+    gen, IndRef ind
   | ConstRef cst -> get_pcst env cst
   | VarRef _ -> CErrors.user_err (str "Variables not handled")
   in
   let (sigma, c) = Evd.fresh_global env.penv_ptgt sigma gr in
   let c = EConstr.of_constr c in
-  let e = mkRel (Environ.nb_rel env.penv_ptgt) in
-  (sigma, mkApp (c, [|e|]))
+  if gen then
+    let e = mkRel (Environ.nb_rel env.penv_ptgt) in
+    (sigma, mkApp (c, [|e|]))
+  else
+    (sigma, c)
 
 let fresh_global env sigma gr =
   try
@@ -175,13 +198,14 @@ let element env sigma c =
   (sigma, mkApp (el, [|e; c|]))
 
 let translate_case_info env sigma ci mip =
+  let gen, ci_ind = get_ind env ci.ci_ind in
   let nrealdecls = mip.mind_nrealdecls in
-  let ci_ind = get_ind env ci.ci_ind in
+  let nrealargs = if gen then 1 + mip.mind_nrealargs else mip.mind_nrealargs in
   let ci_npar = ci.ci_npar + 1 in
   let ci_cstr_ndecls = Array.append ci.ci_cstr_ndecls [|1 + nrealdecls|] in
-  let ci_cstr_nargs = Array.append ci.ci_cstr_nargs [|1 + mip.mind_nrealargs|] in
+  let ci_cstr_nargs = Array.append ci.ci_cstr_nargs [|nrealargs|] in
   let tags =
-    false :: (** additional exception argument *)
+    not gen :: (** additional exception argument *)
     Context.Rel.to_tags (List.firstn nrealdecls mip.mind_arity_ctxt)
   in
   let ci_pp_info = { ci.ci_pp_info with
@@ -193,9 +217,10 @@ let mk_default_ind env sigma (ind, u) =
   let e = mkRel (Environ.nb_rel env.env_tgt) in
   let (_, mip) = Inductive.lookup_mind_specif env.env_src ind in
   let err = Array.length mip.mind_consnames + 1 in
-  let ind = get_ind env ind in
+  let gen, ind = get_ind env ind in
   let (sigma, (ind, u)) = Evd.fresh_inductive_instance env.env_tgt sigma ind in
-  let r = mkApp (mkConstructU ((ind, err), EInstance.make u), [|e|]) in
+  let r = mkConstructU ((ind, err), EInstance.make u) in
+  let r = if gen then mkApp (r, [|e|]) else r in
   (sigma, r)
 
 (* From Γ ⊢ M : A produce [M] s.t. ⟦Γ⟧ ⊢ [M] : ⟦A⟧. *)
@@ -635,7 +660,11 @@ let extend_inductive env mind0 mind =
   let ind_name = Lib.make_kn (translate_internal_name mind0.mind_packets.(0).mind_typename) in
   let mind = MutInd.make1 ind_name in
   let env_tgt = Environ.add_mind mind mbi env.env_tgt in
-  let translator = { env.translator with inds = Mindmap.add mind mind env.translator.inds } in
+  let ext = match env.error with
+  | None -> GlobGen mind
+  | Some exn -> GlobImp (Refmap.singleton exn mind)
+  in
+  let translator = { env.translator with inds = Mindmap.add mind ext env.translator.inds } in
   mind, { env with translator; env_tgt }
 
 let abstract_mind sigma mind n k c =
