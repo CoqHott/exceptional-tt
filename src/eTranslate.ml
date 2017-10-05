@@ -13,6 +13,10 @@ open Pp
 exception MissingGlobal of global_reference
 exception MissingPrimitive of global_reference
 
+type ref_translation =
+| RefGen of global_reference
+| RefImp of global_reference
+
 type translator = {
   refs : global_reference Cmap.t;
   inds : MutInd.t Mindmap.t;
@@ -21,6 +25,8 @@ type translator = {
 }
 
 type context = {
+  error : global_reference option;
+  (** Whether the translation is relativized to a specific error type *)
   translator : translator;
   env_src : Environ.env;
   env_tgt : Environ.env;
@@ -37,6 +43,8 @@ let push_def na (c, ce) (t, te) env = { env with
 }
 
 type pcontext = {
+  perror : global_reference option;
+  (** Whether the translation is relativized to a specific error type *)
   ptranslator : translator;
   penv_src : Environ.env;
   (** ⊢ Γ *)
@@ -384,6 +392,7 @@ and otranslate_context env sigma = function
   (sigma, push_def na (b, be) (t, te) env, LocalDef (na, be, te) :: ctx)
 
 let project env = {
+  error = env.perror;
   translator = env.ptranslator;
   env_src = env.penv_src;
   env_tgt = env.penv_tgt;
@@ -481,22 +490,33 @@ and optranslate_type env sigma c = match EConstr.kind sigma c with
   let (sigma, cr) = optranslate env sigma c in
   (sigma, mkApp (Vars.lift 1 cr, [| mkRel 1 |]))
 
-let make_context translator env sigma =
+let make_error err env sigma = match err with
+| None ->
   let (sigma, s) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env sigma InType in
-  let e = name_errtype in
-  let env_tgt = Environ.push_rel (LocalAssum (Name e, Constr.mkSort s)) env in
+  let d = LocalAssum (Name name_errtype, Constr.mkSort s) in
+  (sigma, d)
+| Some gr ->
+  let (sigma, s) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env sigma InType in
+  let (sigma, c) = Evd.fresh_global env sigma gr in
+  let d = LocalDef (Name name_errtype, c, Constr.mkSort s) in
+  (sigma, d)
+
+let make_context error translator env sigma =
+  let (sigma, decl) = make_error error env sigma in
+  let env_tgt = Environ.push_rel decl env in
   let env = {
+    error;
     translator;
     env_src = env;
     env_tgt;
   } in
   (sigma, env)
 
-let make_pcontext ptranslator env sigma =
-  let (sigma, s) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env sigma InType in
-  let e = name_errtype in
-  let env_tgt = Environ.push_rel (LocalAssum (Name e, Constr.mkSort s)) env in
+let make_pcontext perror ptranslator env sigma =
+  let (sigma, decl) = make_error perror env sigma in
+  let env_tgt = Environ.push_rel decl env in
   let env = {
+    perror;
     ptranslator;
     penv_src = env;
     penv_tgt = env_tgt;
@@ -517,8 +537,8 @@ let get_pexception env =
   let rels = EConstr.rel_context env.penv_ptgt in
   List.last rels
 
-let translate translator env0 sigma c =
-  let (sigma, env) = make_context translator env0 sigma in
+let translate err translator env0 sigma c =
+  let (sigma, env) = make_context err translator env0 sigma in
   let (sigma, c_) = otranslate env sigma c in
   let decl = get_exception env in
   let c_ = mkLambda_or_LetIn decl c_ in
@@ -536,16 +556,16 @@ let translate translator env0 sigma c =
   *)
   (sigma, c_)
 
-let ptranslate translator env0 sigma c =
-  let (sigma, env) = make_pcontext translator env0 sigma in
+let ptranslate err translator env0 sigma c =
+  let (sigma, env) = make_pcontext err translator env0 sigma in
   let (sigma, cr) = optranslate env sigma c in
   let decl = get_pexception env in
   let cr = mkLambda_or_LetIn decl cr in
   let (sigma, _) = Typing.type_of env.penv_src sigma cr in
   (sigma, cr)
 
-let translate_type translator env sigma c =
-  let (sigma, env) = make_context translator env sigma in
+let translate_type err translator env sigma c =
+  let (sigma, env) = make_context err translator env sigma in
   let (sigma, c_) = otranslate_type env sigma c in
   let decl = get_exception env in
   let c_ = mkProd_or_LetIn decl c_ in
@@ -553,8 +573,8 @@ let translate_type translator env sigma c =
   (sigma, c_)
 
 (* From ⊢ A : Type produce Ap s.t. ⊢ Ap : (forall E : Type, ⟦A⟧) -> Type. *)
-let ptranslate_type translator env0 sigma c =
-  let (sigma, env) = make_pcontext translator env0 sigma in
+let ptranslate_type err translator env0 sigma c =
+  let (sigma, env) = make_pcontext err translator env0 sigma in
   let (sigma, c_) = otranslate_type (project env) sigma c in
   let decl = get_exception (project env) in
   let c_ = mkProd_or_LetIn decl c_ in
@@ -806,9 +826,9 @@ let retype_inductive env sigma params inds =
   let params = Rel.map nf params in
   sigma, inds, params
 
-let translate_inductive translator env mind0 (mind : Entries.mutual_inductive_entry) =
+let translate_inductive err translator env mind0 (mind : Entries.mutual_inductive_entry) =
   let sigma = Evd.from_env env in
-  let (sigma, env) = make_context translator env sigma in
+  let (sigma, env) = make_context err translator env sigma in
   let (sigma, env, _) = translate_context env sigma mind0.mind_params_ctxt in
   let inds = List.combine (Array.to_list mind0.mind_packets) mind.mind_entry_inds in
   let inds = List.mapi (fun i (ind, ind0) -> (i, ind, ind0)) inds in

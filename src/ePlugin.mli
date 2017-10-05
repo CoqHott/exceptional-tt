@@ -2,5 +2,5 @@ open Names
 open Libnames
 open ETranslate
 
-val translate : reference -> Id.t list option -> unit
-val ptranslate : reference -> Id.t list option -> unit
+val translate : ?exn:reference -> ?names:Id.t list -> reference -> unit
+val ptranslate : ?exn:reference -> ?names:Id.t list -> reference -> unit

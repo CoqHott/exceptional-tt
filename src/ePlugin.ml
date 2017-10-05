@@ -115,18 +115,18 @@ let on_one_id f ids cst = match ids with
 | Some [id] -> id
 | Some _ -> user_err (str "Not the right number of provided names")
 
-let translate_constant translator cst ids =
+let translate_constant err translator cst ids =
   let id = on_one_id translate_name ids cst in
   (** Translate the type *)
   let env = Global.env () in
   let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
   let typ = EConstr.of_constr typ in
   let sigma = Evd.from_env env in
-  let (sigma, typ) = ETranslate.translate_type translator env sigma typ in
+  let (sigma, typ) = ETranslate.translate_type err translator env sigma typ in
   let sigma, _ = Typing.type_of env sigma typ in
   let (body, _) = Option.get (Global.body_of_constant cst) in
   let body = EConstr.of_constr body in
-  let (sigma, body) = ETranslate.translate translator env sigma body in
+  let (sigma, body) = ETranslate.translate err translator env sigma body in
   let evdref = ref sigma in
   let () = Typing.e_check env evdref body typ in
   let sigma = !evdref in
@@ -136,7 +136,7 @@ let translate_constant translator cst ids =
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (ExtEffect, cst, ConstRef cst_)]
 
-let ptranslate_constant translator cst ids =
+let ptranslate_constant err translator cst ids =
   let id = on_one_id ptranslate_name ids cst in
   (** Translate the type *)
   let env = Global.env () in
@@ -147,13 +147,13 @@ let ptranslate_constant translator cst ids =
   in
   let typ = EConstr.of_constr typ in
   let sigma = Evd.from_env env in
-  let (sigma, typ) = ETranslate.ptranslate_type translator env sigma typ in
+  let (sigma, typ) = ETranslate.ptranslate_type err translator env sigma typ in
   let (sigma, c_) = Evd.fresh_global env sigma c_ in
   let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
   let sigma, _ = Typing.type_of env sigma typ in
   let (body, _) = Option.get (Global.body_of_constant cst) in
   let body = EConstr.of_constr body in
-  let (sigma, body) = ETranslate.ptranslate translator env sigma body in
+  let (sigma, body) = ETranslate.ptranslate err translator env sigma body in
   let evdref = ref sigma in
   let () = Typing.e_check env evdref body typ in
   let sigma = !evdref in
@@ -281,20 +281,20 @@ let process_inductive mib =
 end
 
 (** From a kernel inductive body construct an entry for the inductive. *)
-let translate_inductive_aux translator env mind =
+let translate_inductive_aux err translator env mind =
   let mind' = ExternInd.process_inductive mind in
-  let mind = ETranslate.translate_inductive translator env mind mind' in
+  let mind = ETranslate.translate_inductive err translator env mind mind' in
   mind
 
 (** Register the wrapping of the inductive type and its constructors *)
 let translate_inductive_defs translator ind ind_ mind mind_ =
   [ExtInductive (ExtEffect, ind, ind_)]
 
-let translate_inductive translator ind =
+let translate_inductive err translator ind =
   let open Declarations in
   let env = Global.env () in
   let (mind, _) = Inductive.lookup_mind_specif env ind in
-  let mind_ = translate_inductive_aux translator env mind in
+  let mind_ = translate_inductive_aux err translator env mind in
   let ((_, kn), _) = Declare.declare_mind mind_ in
   let ind_ = Global.mind_of_delta_kn kn in
   let mind_ = Global.lookup_mind ind_ in
@@ -314,23 +314,27 @@ let msg_translate = function
   in
   prlist_with_sep fnl pr l
 
-let translate gr ids =
+let translate ?exn ?names gr =
+  let ids = names in
+  let err = Option.map Nametab.global exn in
   let gr = Nametab.global gr in
   let translator = !translator in
   let ans = match gr with
-  | ConstRef cst -> translate_constant translator cst ids
-  | IndRef ind -> translate_inductive translator ind
+  | ConstRef cst -> translate_constant err translator cst ids
+  | IndRef ind -> translate_inductive err translator ind
   | _ -> user_err (str "Translation not handled.")
   in
   let () = Lib.add_anonymous_leaf (in_translator (ExtendEffect ans)) in
   let msg = prlist_with_sep fnl msg_translate ans in
   Feedback.msg_info msg
 
-let ptranslate gr ids =
+let ptranslate ?exn ?names gr =
+  let ids = names in
+  let err = Option.map Nametab.global exn in
   let gr = Nametab.global gr in
   let translator = !translator in
   let ans = match gr with
-  | ConstRef cst -> ptranslate_constant translator cst ids
+  | ConstRef cst -> ptranslate_constant err translator cst ids
   | _ -> user_err (str "Translation not handled.")
   in
   let () = Lib.add_anonymous_leaf (in_translator (ExtendEffect ans)) in
