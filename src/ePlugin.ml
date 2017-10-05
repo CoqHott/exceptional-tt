@@ -163,29 +163,32 @@ let translate_constant err translator cst ids =
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (cst, ConstRef cst_)]
 
+(** Fix potential mismatch between the generality of parametricity and effect
+    translations *)
+let instantiate_error env sigma err gen c_ = match err with
+| None -> (sigma, c_)
+| Some err ->
+  if gen then
+    let (sigma, err) = Evd.fresh_global env sigma err in
+    (sigma, mkApp (c_, [| err |]))
+  else (sigma, c_)
+
 let ptranslate_constant err translator cst ids =
   let id = on_one_id ptranslate_name ids cst in
   (** Translate the type *)
   let env = Global.env () in
+  let sigma = Evd.from_env env in
   let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
+  let (sigma, (_, u)) = Evd.fresh_constant_instance env sigma cst in
+  let typ = Vars.subst_instance_constr u typ in
   let gen, c_ =
     try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
     with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
   in
   let typ = EConstr.of_constr typ in
-  let sigma = Evd.from_env env in
   let (sigma, typ) = ETranslate.ptranslate_type err translator env sigma typ in
   let (sigma, c_) = Evd.fresh_global env sigma c_ in
-  (** Fix potential mismatch between the generality of parametricity and effect
-      translations *)
-  let (sigma, c_) = match err with
-  | None -> (sigma, c_)
-  | Some err ->
-    if gen then
-      let (sigma, err) = Evd.fresh_global env sigma err in
-      (sigma, mkApp (c_, [| err |]))
-    else (sigma, c_)
-  in
+  let (sigma, c_) = instantiate_error env sigma err gen c_ in
   let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
   let sigma, _ = Typing.type_of env sigma typ in
   let (body, _) = Option.get (Global.body_of_constant cst) in
@@ -387,7 +390,6 @@ let implement ?exn id typ =
   let translator = !translator in
   let err = Option.map Nametab.global exn in
   let id_ = translate_name id in
-  let kind = Global, false, DefinitionBody Definition in
   let sigma = Evd.from_env env in
   let (typ, uctx) = Constrintern.interp_type env sigma typ in
   let typ = EConstr.of_constr typ in
@@ -407,7 +409,41 @@ let implement ?exn id typ =
   in
   let hook ctx = Lemmas.mk_hook hook in
   let sigma, _ = Typing.type_of env sigma typ_ in
+  let kind = Global, false, DefinitionBody Definition in
   let () = Lemmas.start_proof_univs id_ kind sigma typ_ hook in
+  ()
+
+let pimplement ?exn gr =
+  let env = Global.env () in
+  let translator = !translator in
+  let err = Option.map Nametab.global exn in
+  let cst = match Nametab.global gr with
+  | ConstRef cst -> cst
+  | _ -> user_err (str "Parametricity can only be implemented for constants")
+  in
+  let id = Label.to_id (Constant.label cst) in
+  let sigma = Evd.from_env env in
+  let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
+  let (sigma, (_, u)) = Evd.fresh_constant_instance env sigma cst in
+  let typ = Vars.subst_instance_constr u typ in
+  let gen, c_ =
+    try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
+    with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
+  in
+  let typ = EConstr.of_constr typ in
+  let (sigma, typ) = ETranslate.ptranslate_type err translator env sigma typ in
+  let (sigma, c_) = Evd.fresh_global env sigma c_ in
+  let (sigma, c_) = instantiate_error env sigma err gen c_ in
+  let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
+  let hook _ dst =
+    (** Attach the axiom to the implementation *)
+    let ext = ExtendEffect (ExtParam, err, [ExtConstant (cst, dst)]) in
+    Lib.add_anonymous_leaf (in_translator ext)
+  in
+  let hook ctx = Lemmas.mk_hook hook in
+  let kind = Global, false, DefinitionBody Definition in
+  let idr = ptranslate_name id in
+  let () = Lemmas.start_proof_univs idr kind sigma typ hook in
   ()
 
 (** Error handling *)
