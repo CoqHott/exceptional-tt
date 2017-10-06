@@ -14,6 +14,8 @@ type 'a global_translation =
 
 val get_instance : effect -> 'a global_translation -> bool * 'a
 
+val instantiate_error : effect -> Environ.env -> Evd.evar_map -> bool -> EConstr.t -> Evd.evar_map * EConstr.t
+
 type translator = {
   refs : global_reference global_translation Cmap.t;
   inds : MutInd.t global_translation Mindmap.t;
@@ -28,7 +30,7 @@ val translate_type :
   effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
 
 val translate_inductive :
-  effect -> translator -> Environ.env -> Declarations.mutual_inductive_body ->
+  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
 
 val ptranslate :
@@ -36,3 +38,7 @@ val ptranslate :
 
 val ptranslate_type :
   effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
+
+val ptranslate_inductive :
+  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
+    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry

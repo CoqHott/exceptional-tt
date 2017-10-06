@@ -183,8 +183,8 @@ let ptranslate_constant err translator cst ids =
   let typ = EConstr.of_constr typ in
   let (sigma, typ) = ETranslate.ptranslate_type err translator env sigma typ in
   let (sigma, c_) = Evd.fresh_global env sigma c_ in
-  let (sigma, c_) = instantiate_error env sigma err gen c_ in
-  let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
+  let (sigma, c_) = ETranslate.instantiate_error err env sigma gen (EConstr.of_constr c_) in
+  let typ = EConstr.Vars.subst1 c_ typ in
   let sigma, _ = Typing.type_of env sigma typ in
   let (body, _) = Option.get (Global.body_of_constant cst) in
   let body = EConstr.of_constr body in
@@ -198,27 +198,20 @@ let ptranslate_constant err translator cst ids =
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (cst, ConstRef cst_)]
 
-(********************************)
-(* Discharging mutual inductive *)
-
-(** From a kernel inductive body construct an entry for the inductive. *)
-let translate_inductive_aux err translator env mind =
+let translate_inductive_gen f err translator (ind, _) =
+  let env = Global.env () in
+  let (mind, _) = Inductive.lookup_mind_specif env (ind, 0) in
   let mind' = EUtil.process_inductive mind in
-  let mind = ETranslate.translate_inductive err translator env mind mind' in
-  mind
-
-(** Register the wrapping of the inductive type and its constructors *)
-let translate_inductive_defs translator ind ind_ mind mind_ =
+  let mind_ = f err translator env ind mind mind' in
+  let ((_, kn), _) = Declare.declare_mind mind_ in
+  let ind_ = Global.mind_of_delta_kn kn in
   [ExtInductive (ind, ind_)]
 
 let translate_inductive err translator ind =
-  let env = Global.env () in
-  let (mind, _) = Inductive.lookup_mind_specif env ind in
-  let mind_ = translate_inductive_aux err translator env mind in
-  let ((_, kn), _) = Declare.declare_mind mind_ in
-  let ind_ = Global.mind_of_delta_kn kn in
-  let mind_ = Global.lookup_mind ind_ in
-  translate_inductive_defs translator (fst ind) ind_ mind mind_
+  translate_inductive_gen ETranslate.translate_inductive err translator ind
+
+let ptranslate_inductive err translator ind =
+  translate_inductive_gen ETranslate.ptranslate_inductive err translator ind
 
 let msg_translate = function
 | ExtConstant (cst, gr) ->
@@ -256,6 +249,7 @@ let ptranslate ?exn ?names gr =
   let translator = !translator in
   let ans = match gr with
   | ConstRef cst -> ptranslate_constant err translator cst ids
+  | IndRef ind -> ptranslate_inductive err translator ind
   | _ -> user_err (str "Translation not handled.")
   in
   let ext = ExtendEffect (ExtParam, err, ans) in

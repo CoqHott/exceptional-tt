@@ -107,9 +107,28 @@ let inductive_levels env sigma arities inds =
   in
   (sigma, List.rev arities)
 
+let check_type env sigma c t =
+  let evdref = ref sigma in
+  let () = Typing.e_check env evdref c t in
+  !evdref
+
+let retype_context env sigma ctx =
+  let fold decl (env, sigma) = match decl with
+  | LocalAssum (na, t) ->
+    let (sigma, _) = Typing.type_of env sigma t in
+    (EConstr.push_rel decl env, sigma)
+  | LocalDef (na, b, t) ->
+    let (sigma, _) = Typing.type_of env sigma t in
+    let sigma = check_type env sigma b t in
+    (EConstr.push_rel decl env, sigma)
+  in
+  let (_, sigma) = List.fold_right fold ctx (env, sigma) in
+  sigma
+
 (** Infer the universe constraints for constructors *)
 let retype_inductive env sigma params inds =
   let env = Environ.pop_rel_context (Environ.nb_rel env) env in
+  let sigma = retype_context env sigma params in
   let mk_arities sigma ind =
     let arity = it_mkProd_or_LetIn (EConstr.of_constr ind.mind_entry_arity) params in
     let (sigma, _) = Typing.type_of env sigma arity in
