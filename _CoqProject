@@ -2,6 +2,8 @@
 -R theories/ Effects
 -I src/
 
+src/eUtil.ml
+src/eUtil.mli
 src/eTranslate.ml
 src/eTranslate.mli
 src/ePlugin.ml

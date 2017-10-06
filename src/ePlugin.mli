@@ -1,6 +1,5 @@
 open Names
 open Libnames
-open ETranslate
 
 val translate : ?exn:reference -> ?names:Id.t list -> reference -> unit
 val ptranslate : ?exn:reference -> ?names:Id.t list -> reference -> unit

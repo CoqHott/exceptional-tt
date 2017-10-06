@@ -2,23 +2,17 @@ open CErrors
 open Pp
 open Util
 open Names
-open Context
 open Term
 open Decl_kinds
 open Libobject
 open Mod_subst
 open Globnames
-open Proofview.Notations
 
 (** Utilities *)
 
 let translate_name id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᵉ")
-
-let translate_internal_name id =
-  let id = Id.to_string id in
-  Id.of_string (id ^ "ᵒ")
 
 let ptranslate_name id =
   let id = Id.to_string id in
@@ -121,6 +115,7 @@ let in_translator : translator_obj -> obj =
     open_function = open_translator;
     discharge_function = (fun (_, o) -> Some o);
     classify_function = (fun o -> Substitute o);
+    subst_function = subst_translator;
   }
 
 (** Tactic *)
@@ -203,126 +198,12 @@ let ptranslate_constant err translator cst ids =
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (cst, ConstRef cst_)]
 
-let sort_of_elim sigma body =
-  let open Declarations in
-  if List.mem Sorts.InType body.mind_kelim then
-    let (sigma, s) = Evd.new_sort_variable Evd.univ_flexible sigma in
-    let sigma =
-      if Array.length body.mind_consnames > 1 then
-        Evd.set_leq_sort Environ.empty_env sigma (Prop Pos) s
-      else sigma
-    in
-    (sigma, mkSort s)
-  else (sigma, mkProp)
-
-let sort_of env sigma c =
-  let evdref = ref sigma in
-  let sort = Typing.e_sort_of env evdref c in
-  (!evdref, sort)
-
-let substl_rel_context subst ctx =
-  let ctx = Vars.substl subst (it_mkProd_or_LetIn mkProp ctx) in
-  let (ctx, _) = Term.decompose_prod_assum ctx in
-  ctx
-
 (********************************)
 (* Discharging mutual inductive *)
 
-module ExternInd :
-sig
-val process_inductive : Declarations.mutual_inductive_body -> Entries.mutual_inductive_entry
-end =
-struct
-
-open Constr
-open Vars
-open Entries
-open Declarations
-open Context.Rel.Declaration
-
-let detype_param =
-  function
-  | LocalAssum (Name id, p) -> id, LocalAssumEntry p
-  | LocalDef (Name id, p,_) -> id, LocalDefEntry p
-  | _ -> anomaly (Pp.str "Unnamed inductive local variable.")
-
-(* Replace
-
-     Var(y1)..Var(yq):C1..Cq |- Ij:Bj
-     Var(y1)..Var(yq):C1..Cq; I1..Ip:B1..Bp |- ci : Ti
-
-   by
-
-     |- Ij: (y1..yq:C1..Cq)Bj
-     I1..Ip:(B1 y1..yq)..(Bp y1..yq) |- ci : (y1..yq:C1..Cq)Ti[Ij:=(Ij y1..yq)]
-*)
-
-let abstract_inductive nparams inds =
-(* To be sure to be the same as before, should probably be moved to process_inductive *)
-  let params' = let (_,arity,_,_,_) = List.hd inds in
-		let (params,_) = decompose_prod_n_assum nparams arity in
-                List.map detype_param params
-  in
-  let ind'' =
-  List.map
-    (fun (a,arity,template,c,lc) ->
-      let _, short_arity = decompose_prod_n_assum nparams arity in
-      let shortlc =
-	List.map (fun c -> snd (decompose_prod_n_assum nparams c)) lc in
-      { mind_entry_typename = a;
-	mind_entry_arity = short_arity;
-	mind_entry_template = template;
-	mind_entry_consnames = c;
-	mind_entry_lc = shortlc })
-    inds
-  in (params',ind'')
-
-let refresh_polymorphic_type_of_inductive (_,mip) =
-  match mip.mind_arity with
-  | RegularArity s -> s.mind_user_arity, false
-  | TemplateArity ar ->
-    let ctx = List.rev mip.mind_arity_ctxt in
-      mkArity (List.rev ctx, Type ar.template_level), true
-
-let process_inductive mib =
-  let nparams = Context.Rel.length mib.mind_params_ctxt in
-  let ind_univs = match mib.mind_universes with
-  | Monomorphic_ind ctx -> Monomorphic_ind_entry ctx
-  | Polymorphic_ind auctx ->
-    let auctx = Univ.AUContext.repr auctx in
-    Polymorphic_ind_entry auctx
-  | Cumulative_ind cumi ->
-    let auctx = Univ.ACumulativityInfo.univ_context cumi in
-    let auctx = Univ.AUContext.repr auctx in
-    Cumulative_ind_entry (Universes.univ_inf_ind_from_universe_context auctx)
-  in
-  let map mip =
-    let arity, template = refresh_polymorphic_type_of_inductive (mib,mip) in
-    (mip.mind_typename,
-      arity, template,
-      Array.to_list mip.mind_consnames,
-      Array.to_list mip.mind_user_lc)
-  in
-  let inds = Array.map_to_list map mib.mind_packets in
-  let (params', inds') = abstract_inductive nparams inds in
-  let record = match mib.mind_record with
-    | Some (Some (id, _, _)) -> Some (Some id)
-    | Some None -> Some None
-    | None -> None
-  in
-  { mind_entry_record = record;
-    mind_entry_finite = mib.mind_finite;
-    mind_entry_params = params';
-    mind_entry_inds = inds';
-    mind_entry_private = mib.mind_private;
-    mind_entry_universes = ind_univs
-  }
-
-end
-
 (** From a kernel inductive body construct an entry for the inductive. *)
 let translate_inductive_aux err translator env mind =
-  let mind' = ExternInd.process_inductive mind in
+  let mind' = EUtil.process_inductive mind in
   let mind = ETranslate.translate_inductive err translator env mind mind' in
   mind
 
@@ -331,7 +212,6 @@ let translate_inductive_defs translator ind ind_ mind mind_ =
   [ExtInductive (ind, ind_)]
 
 let translate_inductive err translator ind =
-  let open Declarations in
   let env = Global.env () in
   let (mind, _) = Inductive.lookup_mind_specif env ind in
   let mind_ = translate_inductive_aux err translator env mind in

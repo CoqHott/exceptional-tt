@@ -1,6 +1,5 @@
 open Names
 open Globnames
-open Context
 
 type effect = global_reference option
 
