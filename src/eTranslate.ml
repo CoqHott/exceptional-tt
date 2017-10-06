@@ -651,6 +651,9 @@ let to_local_entry = function
 | LocalDef (Name id, b, t) -> (id, Entries.LocalDefEntry b)
 | _ -> assert false
 
+let dummy_kn id =
+  KerName.make (MPfile DirPath.empty) DirPath.empty (Label.of_id id)
+
 (** Locally extend a translator to fake an inductive definition *)
 let extend_inductive env mind0 mind =
   let open Univ in
@@ -662,7 +665,7 @@ let extend_inductive env mind0 mind =
   (** Dummy inductive. It is only used for its universe context, that we set to
       be empty. *)
   let mbi = { mind0 with mind_universes = univs } in
-  let ind_name = Lib.make_kn (translate_internal_name mind0.mind_packets.(0).mind_typename) in
+  let ind_name = dummy_kn (translate_internal_name mind0.mind_packets.(0).mind_typename) in
   let mind = MutInd.make1 ind_name in
   let env_tgt = Environ.add_mind mind mbi env.env_tgt in
   let ext = match env.error with
@@ -753,9 +756,64 @@ let translate_inductive err translator env _ mind0 (mind : Entries.mutual_induct
   } in
   mind
 
+(** Locally extend a translator to fake an inductive definition *)
+let pextend_inductive env (mutind0, _) mind0 mind =
+  let open Univ in
+  let univs = match mind0.mind_universes with
+  | Monomorphic_ind _ -> Monomorphic_ind UContext.empty
+  | Polymorphic_ind _ -> Polymorphic_ind AUContext.empty
+  | Cumulative_ind _ -> Polymorphic_ind AUContext.empty (** FIXME *)
+  in
+  (** Dummy inductive. It is only used for its universe context, that we set to
+      be empty. *)
+  let mbi = { mind0 with mind_universes = univs } in
+  let ind_name = dummy_kn (ptranslate_internal_name mind0.mind_packets.(0).mind_typename) in
+  let mind = MutInd.make1 ind_name in
+  let penv_tgt = Environ.add_mind mind mbi env.penv_tgt in
+  let penv_ptgt = Environ.add_mind mind mbi env.penv_ptgt in
+  let ext = Mindmap.find mutind0 env.ptranslator.inds in
+  let pext = match env.perror with
+  | None -> GlobGen mind
+  | Some exn -> GlobImp (Refmap.singleton exn mind)
+  in
+  let inds = Mindmap.add mind ext env.ptranslator.inds in
+  let pinds = Mindmap.add mind pext env.ptranslator.pinds in
+  let ptranslator = { env.ptranslator with pinds; inds; } in
+  mind, { env with ptranslator; penv_tgt; penv_ptgt }
+
+let ptranslate_constructors env sigma mutind0 mind0 mind ind0 ind =
+  let mutind, env = pextend_inductive env mutind0 mind0 mind in
+  let mk_ind n = mkInd (mutind, n) in
+  let nblock = Array.length mind0.mind_packets in
+  let subst0 = List.init nblock mk_ind in
+  let map (n, sigma) t =
+    (** A bit of term mangling: indices in the context referring to the
+        inductive types we're building do not have the right type. *)
+    let t = EConstr.of_constr t in
+    let t = Vars.substnl subst0 (Environ.nb_rel env.penv_src) t in
+    let (sigma, tr) = optranslate_type env sigma t in
+    (** Instantiate the parametricity hole with the corresponding effectful constructor *)
+    let gen, ind_ = get_ind (project env) mutind0 in
+    let (sigma, (c_, u)) = Evd.fresh_constructor_instance env.penv_tgt sigma (ind_, n) in
+    let c_ = mkConstructU (c_, EInstance.make u) in
+    let make_arg (n, accu) = function
+    | LocalAssum _ -> (succ n, mkRel (2 * n) :: accu)
+    | LocalDef _ -> (succ n, accu)
+    in
+    let (_, args) = List.fold_left make_arg (1, []) mind0.mind_params_ctxt in
+    let args = if gen then mkRel (Environ.nb_rel env.penv_ptgt) :: args else args in
+    let c_ = applist (c_, args) in
+    let tr = Vars.subst1 c_ tr in
+    (** Unmangle *)
+    let tr = abstract_mind sigma mutind nblock (Environ.nb_rel env.penv_ptgt) tr in
+    ((succ n, sigma), tr)
+  in
+  let ((_, sigma), ans) = List.fold_left_map map (1, sigma) ind.mind_entry_lc in
+  (sigma, ans)
+
 let ptranslate_inductive_body err env sigma mutind mind0 mind n ind0 ind =
   let typename = ptranslate_internal_name ind.mind_entry_typename in
-(*   let constructors = List.map translate_name ind.mind_entry_consnames in *)
+  let constructors = List.map ptranslate_name ind.mind_entry_consnames in
   let nindices = List.length ind0.mind_arity_ctxt - List.length mind0.mind_params_ctxt in
   let arity_ctx, _ = List.chop nindices ind0.mind_arity_ctxt in
   let (sigma, arity_env, arity_ctx') = optranslate_context env sigma (List.map EConstr.of_rel_decl arity_ctx) in
@@ -773,13 +831,13 @@ let ptranslate_inductive_body err env sigma mutind mind0 mind n ind0 ind =
   let (sigma, sort) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.penv_ptgt sigma InType in
   let arity = it_mkProd_or_LetIn (mkSort sort) (self :: arity_ctx') in
   let (sigma, _) = Typing.type_of env.penv_ptgt sigma arity in
-(*   let (sigma, lc) = translate_constructors env sigma mind0 mind ind0 ind in *)
-(*   let lc = List.map (fun c -> EConstr.to_constr sigma c) lc in *)
+  let (sigma, lc) = ptranslate_constructors env sigma (mutind, n) mind0 mind ind0 ind in
+  let lc = List.map (fun c -> EConstr.to_constr sigma c) lc in
   let ind = { ind with
     mind_entry_typename = typename;
     mind_entry_arity = EConstr.to_constr sigma arity;
-    mind_entry_consnames = [];
-    mind_entry_lc = [];
+    mind_entry_consnames = constructors;
+    mind_entry_lc = lc;
   } in
   (sigma, ind)
 
