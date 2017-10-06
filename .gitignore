@@ -13,4 +13,4 @@
 *.a
 *.log
 Makefile.coq
-
+Makefile.coq.conf

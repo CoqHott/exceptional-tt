@@ -8,8 +8,6 @@ Class Decidable (A : Type) := dec : A + (not A).
 
 Arguments dec A {_}.
 
-
-
 Instance Decidable_eq_nat : forall (x y : nat), Decidable (eq x y).
 induction x.
 - destruct y.
@@ -58,7 +56,6 @@ Notation " ( x ; p ) " := (existT _ x p).
 Effect Translate sigT.
 Effect Translate projT1.
 Effect Translate projT2.
-(* Effect Translate existT. *)
 
 Require Import String. 
 
@@ -142,6 +139,11 @@ Defined.
 Effect Translate list_to_pair_prop using Exception.
 
 Definition list_to_pair_prop_fake A (x y : A) : list_to_pair [x ; y] = (x,y) :=
-  match (raise "Fake Proof") : empty with end. 
+  match raise "Fake Proof" : empty with end. 
 
 Effect Translate list_to_pair_prop_fake using Exception.
+
+Goal forall A x y , list_to_pair_prop_fakeᵉ A x y = list_to_pair_propᵉ A x y.
+  intros A x y. 
+  compute.
+Abort.
