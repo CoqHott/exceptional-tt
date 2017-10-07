@@ -24,6 +24,10 @@ END
 let classify_impl _ = Vernacexpr.(VtStartProof ("Classic",Doesn'tGuaranteeOpacity,[]), VtLater)
 
 VERNAC COMMAND EXTEND EffectImplementation CLASSIFIED BY classify_impl
+| [ "Effect" "Definition" ident(id) ":" lconstr(typ) ] ->
+  [ EPlugin.implement id typ ]
+| [ "Parametricity" "Definition" global(gr) ] ->
+  [ EPlugin.pimplement gr ]
 | [ "Effect" "Definition" ident(id) ":" lconstr(typ) "using" reference(exn) ] ->
   [ EPlugin.implement ~exn id typ ]
 | [ "Parametricity" "Definition" global(gr) "using" reference(exn) ] ->
