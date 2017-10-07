@@ -87,11 +87,6 @@ let lift_rel_context n ctx =
   in
   List.fold_right_i fold 1 ctx []
 
-let check_type env sigma c t =
-  let evdref = ref sigma in
-  let () = Typing.e_check env.env_tgt evdref c t in
-  !evdref
-
 (** Coq-defined values *)
 
 let effect_path =
@@ -480,7 +475,7 @@ let rec optranslate env sigma c = match EConstr.kind sigma c with
   let r = applist (tr, argsr) in
   (sigma, r)
 | Var id ->
-  assert false
+  apply_pglobal env sigma (VarRef id)
 | Const (p, _) ->
   let (sigma, c) = apply_pglobal env sigma (ConstRef p) in
   (sigma, c)
