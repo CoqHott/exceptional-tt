@@ -57,9 +57,13 @@ type pcontext = {
   (** ⊢ ⟦Γ⟧ε *)
 }
 
+let ptranslate_name id =
+  let id = Id.to_string id in
+  Id.of_string (id ^ "ᴿ")
+
 let pname = function
 | Anonymous -> Anonymous
-| Name id -> Name (Id.of_string (Id.to_string id ^ "ε"))
+| Name id -> Name (ptranslate_name id)
 
 let plift env t =
   let n = Environ.nb_rel env.penv_tgt - 1 in
@@ -624,10 +628,6 @@ let ptranslate_type err translator env0 sigma c =
 let translate_name id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᵉ")
-
-let ptranslate_name id =
-  let id = Id.to_string id in
-  Id.of_string (id ^ "ᴿ")
 
 let translate_internal_name id =
   let id = Id.to_string id in
