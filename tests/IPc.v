@@ -75,13 +75,13 @@ induction nε₀; intros nε₁.
 + refine (
     match nε₁ in natᴿ _ n return
       match n return natᴿ _ n -> Prop with
-      | Oᵉ _ => fun nε₁ => Oε _ = nε₁
+      | Oᵉ _ => fun nε₁ => Oᴿ _ = nε₁
       | Sᵉ _ _ => fun _ => True
       | natᴱ _ _ => fun _ => True
       end nε₁
     with
-    | Oε _ => eq_refl
-    | Sε _ _ nε => I
+    | Oᴿ _ => eq_refl
+    | Sᴿ _ _ nε => I
     end
   ).
 + refine (
@@ -90,13 +90,13 @@ induction nε₀; intros nε₁.
         natᴿ _ n -> Prop
       with
       | Oᵉ _ => fun _ => True
-      | Sᵉ _ n' => fun nε₁ => forall nε₀, (forall nε₁ : natᴿ _ n', nε₀ = nε₁) -> Sε _ n' nε₀ = nε₁
+      | Sᵉ _ n' => fun nε₁ => forall nε₀, (forall nε₁ : natᴿ _ n', nε₀ = nε₁) -> Sᴿ _ n' nε₀ = nε₁
       | natᴱ _ _ => fun _ => True
       end
         nε₁
     with
-    | Oε _ => I
-    | Sε _ _ nε => _
+    | Oᴿ _ => I
+    | Sᴿ _ _ nε => _
     end _ IHnε₀
   ).
   clear; intros nε₀ IH.
@@ -111,14 +111,14 @@ Definition projT1ε {E A Aε B Bε} (p : @sigTᵒ E A B) (pε : @sigTᴿ E A Aε
   Aε (projT1ᵉ E A B p) :=
   match pε in sigTᴿ _ _ _ _ _ p return Aε (projT1ᵉ E A B p)
   with
-  | existTε _ _ _ _ _ _ xε _ _ => xε
+  | existTᴿ _ _ _ _ _ _ xε _ _ => xε
   end.
 
 Definition projT2ε {E A Aε B Bε} (p : @sigTᵒ E A B) (pε : @sigTᴿ E A Aε B Bε p) :
   Bε _ (@projT1ε E A Aε B Bε p pε) (projT2ᵉ E A B p) :=
   match pε in sigTᴿ _ _ _ _ _ p return Bε _ (@projT1ε E A Aε B Bε p pε) (projT2ᵉ E A B p)
   with
-  | existTε _ _ _ _ _ _ _ _ yε => yε
+  | existTᴿ _ _ _ _ _ _ _ _ yε => yε
   end.
 
 Arguments sigTᴿ {E} {A} _ {B} _ _ : rename.
@@ -141,7 +141,7 @@ destruct p₀ as [n b|e]; cbn.
     { intros x xε; destruct (uε x xε). }
     pose (nε := projT1ε _ pε); cbn in *; replace Hn with nε by apply natᴿ_hprop.
     apply (projT2ε _ pε).
-  - constructor 1 with (Oε _).
+  - constructor 1 with (Oᴿ _).
     intros u uε; exfalso.
     unshelve refine (let pε := (pε _) in _); [cbn in *|clearbody pε].
     { intros x xε; destruct (uε x xε). }
@@ -150,11 +150,11 @@ destruct p₀ as [n b|e]; cbn.
   - exfalso; clear - Hn.
     induction n; cbn in *; try congruence.
     apply IHn, Hn.
-+ constructor 1 with (Oε _).
++ constructor 1 with (Oᴿ _).
   intros u uε; exfalso.
   unshelve refine (let pε := (pε _) in _); [cbn in *|clearbody pε].
   { intros x xε; destruct (uε x xε). }
   inversion pε.
 Qed.
 
-Print Assumptions ipε.
+Print Assumptions ipᴿ.

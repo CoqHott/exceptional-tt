@@ -16,7 +16,7 @@ let translate_name id =
 
 let ptranslate_name id =
   let id = Id.to_string id in
-  Id.of_string (id ^ "ε")
+  Id.of_string (id ^ "ᴿ")
 
 (** Record of translation between globals *)
 

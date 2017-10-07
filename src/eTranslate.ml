@@ -632,15 +632,13 @@ let translate_name id =
 
 let ptranslate_name id =
   let id = Id.to_string id in
-  Id.of_string (id ^ "ε")
+  Id.of_string (id ^ "ᴿ")
 
 let translate_internal_name id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᵒ")
 
-let ptranslate_internal_name id =
-  let id = Id.to_string id in
-  Id.of_string (id ^ "ᴿ")
+let ptranslate_internal_name = ptranslate_name
 
 let translate_failure id =
   let id = Id.to_string id in

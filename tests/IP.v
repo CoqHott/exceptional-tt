@@ -59,13 +59,13 @@ induction nε₀; intros nε₁.
 + refine (
     match nε₁ in natᴿ _ n return
       match n return natᴿ _ n -> Prop with
-      | Oᵉ _ => fun nε₁ => Oε _ = nε₁
+      | Oᵉ _ => fun nε₁ => Oᴿ _ = nε₁
       | Sᵉ _ _ => fun _ => True
       | natᴱ _ _ => fun _ => True
       end nε₁
     with
-    | Oε _ => eq_refl
-    | Sε _ _ nε => I
+    | Oᴿ _ => eq_refl
+    | Sᴿ _ _ nε => I
     end
   ).
 + refine (
@@ -74,13 +74,13 @@ induction nε₀; intros nε₁.
         natᴿ _ n -> Prop
       with
       | Oᵉ _ => fun _ => True
-      | Sᵉ _ n' => fun nε₁ => forall nε₀, (forall nε₁ : natᴿ _ n', nε₀ = nε₁) -> Sε _ n' nε₀ = nε₁
+      | Sᵉ _ n' => fun nε₁ => forall nε₀, (forall nε₁ : natᴿ _ n', nε₀ = nε₁) -> Sᴿ _ n' nε₀ = nε₁
       | natᴱ _ _ => fun _ => True
       end
         nε₁
     with
-    | Oε _ => I
-    | Sε _ _ nε => _
+    | Oᴿ _ => I
+    | Sᴿ _ _ nε => _
     end _ IHnε₀
   ).
   clear; intros nε₀ IH.
@@ -95,14 +95,14 @@ Definition projT1ε {E A Aε B Bε} (p : @sigTᵒ E A B) (pε : @sigTᴿ E A Aε
   Aε (projT1ᵉ E A B p) :=
   match pε in sigTᴿ _ _ _ _ _ p return Aε (projT1ᵉ E A B p)
   with
-  | existTε _ _ _ _ _ _ xε _ _ => xε
+  | existTᴿ _ _ _ _ _ _ xε _ _ => xε
   end.
 
 Definition projT2ε {E A Aε B Bε} (p : @sigTᵒ E A B) (pε : @sigTᴿ E A Aε B Bε p) :
   Bε _ (@projT1ε E A Aε B Bε p pε) (projT2ᵉ E A B p) :=
   match pε in sigTᴿ _ _ _ _ _ p return Bε _ (@projT1ε E A Aε B Bε p pε) (projT2ᵉ E A B p)
   with
-  | existTε _ _ _ _ _ _ _ _ yε => yε
+  | existTᴿ _ _ _ _ _ _ _ _ yε => yε
   end.
 
 Arguments sigTᴿ {E} {A} _ {B} _ _ : rename.
@@ -116,13 +116,13 @@ set (p₀ := p (fun _ : El A => Falseᴱ unit tt)) in *.
 change (p (fun _ : El A => Falseᴱ unit tt)) with p₀.
 clearbody p₀; clear p.
 destruct p₀ as [n b|e]; cbn.
-+ unshelve refine (existTε _ _ _ _ _ _ _ _ _).
++ unshelve refine (existTᴿ _ _ _ _ _ _ _ _ _).
   - refine (match nat_valid n as b return
       nat_valid n = b ->
       natᴿ _ (if b then n else Oᵉ unit)
     with
     | true => nat_valid_natᴿ _ _
-    | false => fun _ => Oε _
+    | false => fun _ => Oᴿ _
     end eq_refl).
   - intros u uε.
     set (b0 := nat_valid n).
@@ -133,7 +133,7 @@ destruct p₀ as [n b|e]; cbn.
         Bε (if b0 then n else Oᵉ unit)
           ((if b0 as b1 return (b0 = b1 -> natᴿ _ (if b1 then n else Oᵉ unit))
             then p
-            else fun _ : b0 = false => Oε _) eq_refl)
+            else fun _ : b0 = false => Oᴿ _) eq_refl)
           (if b0 return (El (B (if b0 then n else Oᵉ unit)))
            then b
            else Err (B (Oᵉ unit)) tt)
@@ -154,7 +154,7 @@ destruct p₀ as [n b|e]; cbn.
       specialize (pε HnA).
       assert (Hn' := projT1ε _ pε); cbn in Hn'.
       apply natᴿ_nat_valid in Hn'; clear - Hn Hn'; congruence.
-+ unshelve refine (existTε _ _ _ _ _ _ _ _ _).
++ unshelve refine (existTᴿ _ _ _ _ _ _ _ _ _).
   - constructor.
   - intros u uε; exfalso.
     assert (HnA : forall x : El A, Aε x -> Falseᴿ E (Falseᴱ unit tt)).
