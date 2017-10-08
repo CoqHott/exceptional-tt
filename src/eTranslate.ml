@@ -1,3 +1,5 @@
+module CVars = Vars
+
 open Util
 open Context
 open Rel.Declaration
@@ -395,19 +397,43 @@ and otranslate_type_and_err env sigma t = match EConstr.kind sigma t with
     clutter the translation *)
 and otranslate_ind env sigma (ind, u) args =
   let (mib, mip) = Inductive.lookup_mind_specif env.env_src ind in
-  let e = mkRel (Environ.nb_rel env.env_tgt) in
-  let (sigma, c) = apply_global env sigma (IndRef ind) in
-  let (sigma, typeval) = fresh_global env sigma typeval_e in
   let fold sigma c = otranslate env sigma c in
   let (sigma, args) = Array.fold_map fold sigma args in
-  let (sigma, def) = mk_default_ind env sigma (ind, u) in
   if Int.equal (Array.length args) (mib.mind_nparams + mip.mind_nrealargs) then
     (** Fully applied *)
+    let e = mkRel (Environ.nb_rel env.env_tgt) in
+    let (sigma, c) = apply_global env sigma (IndRef ind) in
+    let (sigma, typeval) = fresh_global env sigma typeval_e in
+    let (sigma, def) = mk_default_ind env sigma (ind, u) in
     let r = mkApp (typeval, [| e; mkApp (c, args); mkApp (def, args) |]) in
     (sigma, r)
   else
     (** Partially applied, we need to eta-expand it. *)
-    assert false
+    let gen, ind = get_ind env ind in
+    let (_, mip) = Inductive.lookup_mind_specif env.env_src ind in
+    let (sigma, (ind, u)) = Evd.fresh_inductive_instance env.env_tgt sigma ind in
+    let subst c = CVars.subst_instance_constr u c in
+    let nctx = List.length mip.mind_arity_ctxt in
+    let map d =
+      let d = Rel.Declaration.map_constr subst d in
+      of_rel_decl d
+    in
+    let ctx = List.map map mip.mind_arity_ctxt in
+    let (sigma, typeval) = fresh_global env sigma typeval_e in
+    let make_arg (n, accu) = function
+    | LocalAssum _ -> (succ n, mkRel n :: accu)
+    | LocalDef _ -> (succ n, accu)
+    in
+    let (_, arity) = List.fold_left make_arg (1, []) mip.mind_arity_ctxt in
+    let u = EInstance.make u in
+    let typ = applist (mkIndU (ind, u), arity) in
+    let def_c = (ind, Array.length mip.mind_consnames) in
+    let def = applist (mkConstructU (def_c, u), arity) in 
+    let r = mkApp (typeval, [| mkRel nctx; typ; def |]) in
+    let r = it_mkLambda_or_LetIn r ctx in
+    let r = if gen then mkApp (r, [| mkRel (Environ.nb_rel env.env_tgt) |]) else r in
+    let r = mkApp (r, args) in
+    (sigma, r)
 
 (* From ⊢ Γ produce ⊢ ⟦Γ⟧ *)
 and otranslate_context env sigma = function
