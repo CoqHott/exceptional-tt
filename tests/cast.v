@@ -32,14 +32,13 @@ Effect Translate not.
 Effect Translate sum.
 Effect Translate Decidable.
 Effect Translate dec.
-
 Effect Translate list.
 Effect Translate prod.
 Effect Translate eq.
 Effect Translate eq_ind.
 Effect Translate nat.
 Effect Translate nat_rect.
-Effect Translate Datatypes.length.
+Effect Translate length.
 Effect Translate True.
 Effect Translate False.
 Effect Translate False_ind. 
@@ -59,19 +58,34 @@ Effect Translate projT2.
 
 Require Import String. 
 
-Definition Exception : Type := string. 
+(* Definition Exception : Type := string.  *)
 
 Effect Translate bool.  
 Effect Translate Ascii.ascii.  
 Effect Translate string.  
-Effect Translate Exception. 
+Effect Translate string_rect.  
 
-Definition lift_bool : boolᵒ Exception -> bool + Exception.
+Effect Definition Exception : Type.
+Proof.
+  intros E. unshelve eapply TypeVal. exact E.
+  exact (@id _).
+Defined. 
+
+Effect Definition raise : forall A, Exception -> A.
+Proof.
+  intros exception A e. cbn in *. 
+  unshelve refine (@Effects.Err exception A _).
+  exact e.
+Defined. 
+
+Arguments raise [A] _.
+
+Definition lift_bool : boolᵒ string -> bool + string.
   destruct 1. exact (inl true). exact (inl false).
-  exact (inr e).
+  exact (inr s).
 Defined.
                 
-Definition lift_ascii : asciiᵒ Exception -> Ascii.ascii + Exception.
+Definition lift_ascii : asciiᵒ string -> Ascii.ascii + string.
   destruct 1.
   destruct (lift_bool b) as [b'| e]; [idtac | exact (inr e)].
   destruct (lift_bool b0) as [b0'| e]; [idtac | exact (inr e)].
@@ -82,27 +96,24 @@ Definition lift_ascii : asciiᵒ Exception -> Ascii.ascii + Exception.
   destruct (lift_bool b5) as [b5'| e]; [idtac | exact (inr e)].
   destruct (lift_bool b6) as [b6'| e]; [idtac | exact (inr e)].
   exact (inl (Ascii.Ascii b' b0' b1' b2' b3' b4' b5' b6')).
-  exact (inr e).
+  exact (inr s).
 Defined. 
   
-Fixpoint lift_Exception (s:stringᵒ Exception) : Exception.
+Fixpoint lift_Exception (s:stringᵒ string) : string.
 Proof.
   destruct s.
   - exact EmptyString.
-  - apply lift_ascii in a. destruct a. 
+  - apply lift_ascii in a. destruct a.
     + apply String. exact a. apply (lift_Exception s).
-    + exact e. 
-  - exact e.
+    + exact s0.
+  - exact s.
+Defined.
+
+Effect Definition lift : string -> Exception using string. 
+intros E. exact lift_Exception.
 Defined. 
 
-Effect Definition raise : forall A, Exception -> A using Exception. 
-Proof.
-  intros exception A e. cbn in *. 
-  unshelve refine (@Effects.Err Exception A _).
-  exact (lift_Exception e).
-Defined. 
-
-Arguments raise [A] _.
+Coercion lift : string >-> Exception.
 
 Local Open Scope string_scope.
 
@@ -110,10 +121,10 @@ Definition cast (A:Type) (P : A -> Type)
   (a:A) {Hdec : Decidable (P a)} : {a : A & P a} :=
   match dec (P a) with
   | inl p => (a ; p)
-  | inr _ => raise "not castable"
+  | inr _ => raise "cast fail"
   end.
 
-Effect Translate cast using Exception.
+Effect Translate cast using string.
 
 Definition list_to_pair {A} : list A -> A * A.
 Proof.
@@ -124,7 +135,7 @@ Proof.
   exact (a,a0).
 Defined.
 
-Effect Translate list_to_pair using Exception.
+Effect Translate list_to_pair using string.
 
 Notation "[ ]" := nil (format "[ ]") : list_scope.
 Notation "[ x ]" := (cons x nil) : list_scope.
@@ -136,14 +147,23 @@ Proof.
   reflexivity.
 Defined.
 
-Effect Translate list_to_pair_prop using Exception.
+Effect Translate list_to_pair_prop using string.
 
 Definition list_to_pair_prop_fake A (x y : A) : list_to_pair [x ; y] = (x,y) :=
   match raise "Fake Proof" : empty with end. 
 
-Effect Translate list_to_pair_prop_fake using Exception.
+Effect Translate list_to_pair_prop_fake using string.
 
 Goal forall A x y , list_to_pair_prop_fakeᵉ A x y = list_to_pair_propᵉ A x y.
   intros A x y. 
   compute.
 Abort.
+
+Effect Definition Try_bool : forall (P : bool -> Type), P true -> P false -> (forall e, P (raise e)) -> forall b, P b.
+Proof.
+  intros Exc P Pt Pf Perr b. destruct b.
+  - exact Pt.
+  - exact Pf.
+  - exact (Perr e).
+Defined.
+
