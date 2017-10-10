@@ -30,7 +30,9 @@ Require Import Streams.
 Effect Translate Stream.
 Parametricity Translate Stream.
 Effect Translate tl.
+Parametricity Translate tl.
 Effect Translate Nat.pred.
+Parametricity Translate Nat.pred.
 Effect Translate Str_nth_tl.
 
 Effect Translate unit.
