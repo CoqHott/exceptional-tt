@@ -8,6 +8,7 @@ Effect Translate eq.
 Parametricity Translate eq.
 
 Effect Translate eq_rect.
+Parametricity Translate eq_rect.
 
 Inductive bar : nat -> nat -> Type := Bar : bar 0 1.
 
@@ -49,7 +50,9 @@ end.
 Effect Translate test.
 
 Effect Translate eq_trans.
+Parametricity Translate eq_trans.
 Effect Translate eq_trans_assoc.
+Parametricity Translate eq_trans_assoc.
 
 Definition qux (A : Type) := list (A -> A).
 

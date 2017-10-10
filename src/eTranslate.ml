@@ -217,7 +217,25 @@ let translate_case_info env sigma ci mip =
     Context.Rel.to_tags (List.firstn nrealdecls mip.mind_arity_ctxt)
   in
   let ci_pp_info = { ci.ci_pp_info with
+    ind_tags = (not gen) :: ci.ci_pp_info.ind_tags;
     cstr_tags = Array.append ci.ci_pp_info.cstr_tags [|tags|];
+  } in
+  { ci_ind; ci_npar; ci_cstr_ndecls; ci_cstr_nargs; ci_pp_info; }
+
+let ptranslate_case_info env sigma ci mip =
+  let gen, ci_ind = get_pind env ci.ci_ind in
+  let ci_npar = if gen then 1 + 2 * ci.ci_npar else 2 * ci.ci_npar in
+  let map n = 2 * n in
+  let ci_cstr_ndecls = Array.map map ci.ci_cstr_ndecls in
+  let ci_cstr_nargs = Array.map map ci.ci_cstr_nargs in
+  let rec dup = function
+  | [] -> []
+  | x :: l -> x :: x :: (dup l)
+  in
+  let ci_pp_info = {
+    ind_tags = (not gen) :: dup ci.ci_pp_info.ind_tags;
+    cstr_tags = Array.map (fun l -> (not gen) :: dup l) ci.ci_pp_info.cstr_tags;
+    style = ci.ci_pp_info.style;
   } in
   { ci_ind; ci_npar; ci_cstr_ndecls; ci_cstr_nargs; ci_pp_info; }
 
@@ -459,13 +477,13 @@ let top_decls env =
   List.firstn 2 (EConstr.rel_context env.penv_ptgt)
 
 (* From Γ ⊢ M : A produce [M]ε s.t. ⟦Γ⟧ε ⊢ [M]ε : ⟦A⟧ [M]. *)
-let rec optranslate env sigma c = match EConstr.kind sigma c with
+let rec optranslate env sigma c0 = match EConstr.kind sigma c0 with
 | Rel n ->
   (sigma, mkRel (2 * n - 1))
 | Sort _ | Prod _ ->
-  let (sigma, c_) = otranslate_type (project env) sigma c in
+  let (sigma, c_) = otranslate_type (project env) sigma c0 in
   let c_ = plift env c_ in
-  let (sigma, r) = optranslate_type env sigma c in
+  let (sigma, r) = optranslate_type env sigma c0 in
   let r = mkLambda (Anonymous, c_, r) in
   (sigma, r)
 | Cast (c, k, t) ->
@@ -516,11 +534,26 @@ let rec optranslate env sigma c = match EConstr.kind sigma c with
   let (sigma, c) = apply_pglobal env sigma (ConstructRef c) in
   (sigma, c)
 | Case (ci, r, c, p) ->
-  assert false
+  let (_, mip) = Inductive.lookup_mind_specif env.penv_src ci.ci_ind in
+  let cir = ptranslate_case_info env sigma ci mip in
+  let (sigma, cr) = optranslate env sigma c in
+  let map sigma p = optranslate env sigma p in
+  let (sigma, pr) = Array.fold_left_map map sigma p in
+  let (ctx, r) = EConstr.decompose_lam_assum sigma r in
+  let (sigma, nenv, ctxr) = optranslate_context env sigma ctx in
+  let (sigma, rr) = optranslate_type nenv sigma r in
+  let c0 = Vars.lift (List.length ctx) c0 in
+  let (ci, r, _, p) = destCase sigma c0 in
+  let c0 = mkCase (ci, r, mkRel 1, p) in
+  let (sigma, ce) = otranslate (project nenv) sigma c0 in
+  let ce = plift nenv ce in
+  let rr = it_mkLambda_or_LetIn (Vars.subst1 ce rr) ctxr in
+  let r = mkCase (cir, rr, cr, pr) in
+  (sigma, r)
 | Fix (fi, recdef) ->
-  assert false
+  CErrors.user_err (str "Fixpoints not handled yet")
 | CoFix (fi, recdef) ->
-  assert false
+  CErrors.user_err (str "Cofixpoints not handled yet")
 | Proj (p, c) -> assert false
 | Meta _ -> assert false
 | Evar _ -> assert false
