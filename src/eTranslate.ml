@@ -551,7 +551,7 @@ let rec optranslate env sigma c0 = match EConstr.kind sigma c0 with
   let r = mkCase (cir, rr, cr, pr) in
   (sigma, r)
 | Fix (fi, recdef) ->
-  CErrors.user_err (str "Fixpoints not handled yet")
+  optranslate_fixpoint env sigma fi recdef
 | CoFix (fi, recdef) ->
   CErrors.user_err (str "Cofixpoints not handled yet")
 | Proj (p, c) -> assert false
@@ -599,6 +599,62 @@ and optranslate_context env sigma = function
   let nenv = push_pdef na (c, c_, cr) (t, t_, tr) env in
   let decl = top_decls nenv in
   (sigma, nenv, decl @ ctx)
+
+and optranslate_fixpoint env sigma (idx, i) (nas, tys, bds) =
+  let fail () = CErrors.user_err (str "Fixpoint not handled yet") in
+  let map i f =
+    let (ctx, f) = EConstr.decompose_lam_assum sigma f in
+    let len = List.length ctx in
+    match EConstr.kind sigma f with
+    | Case (ci, r, c, p) ->
+      let () = match EConstr.kind sigma c with
+      | Rel j ->
+        if not (Int.equal (len - i) j) then fail ()
+      | _ -> fail ()
+      in
+      (ctx, ci, r, p)
+    | _ -> fail ()
+  in
+  let (sigma, fixe) = otranslate (project env) sigma (mkFix ((idx, i), (nas, tys, bds))) in
+  let bds = Array.map2 map idx bds in
+  let fold i (env, sigma, ans) na t =
+    let t = Vars.lift i t in
+    let (sigma, te) = otranslate_type (project env) sigma t in
+    let (sigma, tr) = optranslate_type env sigma t in
+    let env = push_passum na (t, te, tr) env in
+    (env, sigma, tr :: ans)
+  in
+  let (env, sigma, tysr) = Array.fold_left2_i fold (env, sigma, []) nas tys in
+  let fold (n, sigma) (ctx0, ci, r, p) =
+    let (sigma, nenv, ctx0r) = optranslate_context env sigma ctx0 in
+    let (_, mip) = Inductive.lookup_mind_specif nenv.penv_src ci.ci_ind in
+    let cir = ptranslate_case_info nenv sigma ci mip in
+    let cr = mkRel 1 in
+    let map sigma p = optranslate nenv sigma p in
+    let (sigma, pr) = Array.fold_left_map map sigma p in
+    let (ctx, r) = EConstr.decompose_lam_assum sigma r in
+    let (sigma, nenv, ctxr) = optranslate_context nenv sigma ctx in
+    let (sigma, rr) = optranslate_type nenv sigma r in
+    let c0 = mkRel (n - 1 + List.length ctx0 + List.length ctx) in
+    let (sigma, ce) = otranslate (project nenv) sigma c0 in
+    let ce = plift nenv ce in
+    let rr = it_mkLambda_or_LetIn (Vars.subst1 ce rr) ctxr in
+    let r = it_mkLambda_or_LetIn (mkCase (cir, rr, cr, pr)) ctx0 in
+    Feedback.msg_notice (
+      str "CTX " ++
+      Printer.pr_rel_context_of env.penv_ptgt sigma ++
+      fnl () ++
+      str "TRM " ++ 
+      Printer.pr_econstr_env env.penv_ptgt sigma r
+    );
+    ((n + 1, sigma), r)
+  in
+  let tysr = Array.rev_of_list tysr in
+  let idxr = Array.map (fun i -> 2 * i + 1) idx in
+  let nasr = Array.map pname nas in
+  let ((_, sigma), bdsr) = Array.fold_left_map fold (0, sigma) bds in
+  let r = mkFix ((idxr, i), (nasr, tysr, bdsr)) in
+  (sigma, r)
 
 let make_error err env sigma = match err with
 | None ->
@@ -655,6 +711,7 @@ let ptranslate err translator env0 sigma c =
   let (sigma, cr) = optranslate env sigma c in
   let decl = get_pexception env in
   let cr = mkLambda_or_LetIn decl cr in
+  let () = Feedback.msg_notice (Printer.pr_econstr_env env0 sigma cr) in
   let (sigma, _) = Typing.type_of env.penv_src sigma cr in
   (sigma, cr)
 
