@@ -8,6 +8,9 @@ translation would do. This can also be used to extend the logical power of Coq
 itself, allowing to prove a few semi-classical principles amongst which
 independent of premises or Markov's rule.
 
+A draft paper describing the translation can be found
+[here](https://www.xn--pdrot-bsa.fr/articles/exceptional.pdf).
+
 # Compilation
 
 This requires Coq trunk. If the `COQBIN` variable is correctly set, a `make`
