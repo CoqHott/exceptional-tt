@@ -1,5 +1,9 @@
 Require Import Effects.Effects.
 
+Inductive Lam : Type :=
+| Var : nat -> Lam
+| Fun : (Lam -> Lam) -> Lam.
+
 Inductive empty : Type := .
 
 Definition not (T:Type) : Type := T -> empty.
@@ -67,18 +71,37 @@ Effect Translate string_rect.
 
 Effect Definition Exception : Type.
 Proof.
-  intros E. unshelve eapply TypeVal. exact E.
-  exact (@id _).
+  exact (fun E : Type => TypeVal E E id).
 Defined. 
 
 Effect Definition raise : forall A, Exception -> A.
 Proof.
-  intros exception A e. cbn in *. 
-  unshelve refine (@Effects.Err exception A _).
-  exact e.
+  exact (fun (E:Type) (A : type E) => Err A).
 Defined. 
 
 Arguments raise [A] _.
+
+
+Effect Definition Try_bool : forall (P : bool -> Type), P true -> P false -> (forall e, P (raise e)) -> forall b, P b.
+Proof.
+  intros Exc P Pt Pf Perr b. destruct b.
+  - exact Pt.
+  - exact Pf.
+  - exact (Perr e).
+Defined.
+
+Scheme listᵒ_ind := Induction for listᵒ Sort Prop.
+Scheme listᵒ_rect := Induction for listᵒ Sort Type.
+
+Effect Definition Try_list : forall A (P : list A -> Type), P nil ->  (forall (a : A) (l : list A), P l -> P (cons a l)) -> (forall e, P (raise e)) -> forall l, P l.
+Proof.
+  intros Exc A P Pnil Pcons Perr l. induction l.
+  - exact Pnil.
+  - apply Pcons. exact IHl. 
+  - exact (Perr e).
+Defined.
+
+
 
 Definition lift_bool : boolᵒ string -> bool + string.
   destruct 1. exact (inl true). exact (inl false).
@@ -126,16 +149,18 @@ Definition cast (A:Type) (P : A -> Type)
 
 Effect Translate cast using string.
 
-Definition list_to_pair {A} : list A -> A * A.
+Definition list2_to_pair {A} : {l : list A & List.length l = 2} -> A * A.
 Proof.
-  intro l. pose (cast (list A) (fun l => List.length l = 2) l). 
-  destruct s. destruct x.
+  destruct 1. destruct x.
   inversion e.
   destruct x. inversion e.
   exact (a,a0).
 Defined.
 
-Effect Translate list_to_pair using string.
+Definition list_to_pair {A} : list A -> A * A.
+Proof.
+  exact (fun l => list2_to_pair (cast (list A) (fun l => List.length l = 2) l)).  
+Defined.
 
 Notation "[ ]" := nil (format "[ ]") : list_scope.
 Notation "[ x ]" := (cons x nil) : list_scope.
@@ -147,23 +172,18 @@ Proof.
   reflexivity.
 Defined.
 
+Effect Translate list2_to_pair using string.
+Effect Translate list_to_pair using string.
 Effect Translate list_to_pair_prop using string.
 
+Definition list_to_pair_prop_soundness A x y :
+  list_to_pair_propᵉ A x y = eq_reflᵉ  _ _ _ := eq_refl. 
+
 Definition list_to_pair_prop_fake A (x y : A) : list_to_pair [x ; y] = (x,y) :=
-  match raise "Fake Proof" : empty with end. 
+  raise "Fake Proof". 
 
 Effect Translate list_to_pair_prop_fake using string.
 
-Goal forall A x y , list_to_pair_prop_fakeᵉ A x y = list_to_pair_propᵉ A x y.
-  intros A x y. 
-  compute.
-Abort.
-
-Effect Definition Try_bool : forall (P : bool -> Type), P true -> P false -> (forall e, P (raise e)) -> forall b, P b.
-Proof.
-  intros Exc P Pt Pf Perr b. destruct b.
-  - exact Pt.
-  - exact Pf.
-  - exact (Perr e).
-Defined.
+Fail Definition list_to_pair_prop_soundness A x y :
+  list_to_pair_prop_fakeᵉ A x y = eq_reflᵉ  _ _ _ := eq_refl. 
 
