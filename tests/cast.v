@@ -1,9 +1,5 @@
 Require Import Effects.Effects.
 
-Inductive Lam : Type :=
-| Var : nat -> Lam
-| Fun : (Lam -> Lam) -> Lam.
-
 Inductive empty : Type := .
 
 Definition not (T:Type) : Type := T -> empty.
