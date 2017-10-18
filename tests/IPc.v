@@ -104,24 +104,22 @@ induction nε₀; intros nε₁.
   apply IH.
 Qed.
 
+Lemma Falseᴿ_hprop : forall E A Aᴿ
+  (p : @El E A -> Falseᵒ E) (pᴿ : forall x : El A, Aᴿ x -> Falseᴿ E (p x)),
+  forall q, (forall x : El A, Aᴿ x -> Falseᴿ E (q x)).
+Proof.
+intros E A Aᴿ p pᴿ q x xᴿ.
+destruct (pᴿ x xᴿ).
+Qed.
+
 Effect Translate projT1.
 Effect Translate projT2.
-
-Definition projT1ε {E A Aε B Bε} (p : @sigTᵒ E A B) (pε : @sigTᴿ E A Aε B Bε p) :
-  Aε (projT1ᵉ E A B p) :=
-  match pε in sigTᴿ _ _ _ _ _ p return Aε (projT1ᵉ E A B p)
-  with
-  | existTᴿ _ _ _ _ _ _ xε _ _ => xε
-  end.
-
-Definition projT2ε {E A Aε B Bε} (p : @sigTᵒ E A B) (pε : @sigTᴿ E A Aε B Bε p) :
-  Bε _ (@projT1ε E A Aε B Bε p pε) (projT2ᵉ E A B p) :=
-  match pε in sigTᴿ _ _ _ _ _ p return Bε _ (@projT1ε E A Aε B Bε p pε) (projT2ᵉ E A B p)
-  with
-  | existTᴿ _ _ _ _ _ _ _ _ yε => yε
-  end.
+Parametricity Translate projT1.
+Parametricity Translate projT2.
 
 Arguments sigTᴿ {E} {A} _ {B} _ _ : rename.
+Arguments projT1ᴿ {_ _ _ _ _} _ _.
+Arguments projT2ᴿ {_ _ _ _ _} _ _.
 
 Parametricity Definition ip using unit.
 Proof.
@@ -137,23 +135,20 @@ destruct p₀ as [n b|e]; cbn.
   - apply is_nat_valid in Hn.
     constructor 1 with Hn.
     intros u uε.
-    unshelve refine (let pε := (pε _) in _); [cbn in *|clearbody pε].
-    { intros x xε; destruct (uε x xε). }
-    pose (nε := projT1ε _ pε); cbn in *; replace Hn with nε by apply natᴿ_hprop.
-    apply (projT2ε _ pε).
+    specialize (pε (Falseᴿ_hprop _ _ _ _ uε _)).
+    pose (nε := projT1ᴿ _ pε); cbn in *; replace Hn with nε by apply natᴿ_hprop.
+    apply (projT2ᴿ _ pε).
   - constructor 1 with (Oᴿ _).
     intros u uε; exfalso.
-    unshelve refine (let pε := (pε _) in _); [cbn in *|clearbody pε].
-    { intros x xε; destruct (uε x xε). }
-    assert (nε := projT1ε _ pε); cbn in *.
+    specialize (pε (Falseᴿ_hprop _ _ _ _ uε _)).
+    assert (nε := projT1ᴿ _ pε); cbn in *.
     apply valid_is_nat in nε; congruence.
   - exfalso; clear - Hn.
     induction n; cbn in *; try congruence.
     apply IHn, Hn.
 + constructor 1 with (Oᴿ _).
   intros u uε; exfalso.
-  unshelve refine (let pε := (pε _) in _); [cbn in *|clearbody pε].
-  { intros x xε; destruct (uε x xε). }
+  specialize (pε (Falseᴿ_hprop _ _ _ _ uε _)).
   inversion pε.
 Qed.
 
