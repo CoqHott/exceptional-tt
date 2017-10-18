@@ -13,8 +13,17 @@ A draft paper describing the translation can be found
 
 # Compilation
 
-This requires Coq trunk. If the `COQBIN` variable is correctly set, a `make`
+This requires Coq 8.7. If the `COQBIN` variable is correctly set, a `make`
 invokation should be enough.
+
+Alternatively, one can install this plugin through OPAM. Assuming the Coq
+repositories are available (see [the official documentation](https://github.com/coq/opam-coq-archive)),
+it is enough to do the following.
+
+```
+opam pin add coq-exceptional-tt https://github.com/CoqHott/exceptional-tt.git
+opam install coq-exceptional-tt
+```
 
 # Use of the plugin
 

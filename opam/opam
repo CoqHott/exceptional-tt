@@ -7,7 +7,7 @@ license: "WTFPL 2.0"
 homepage: "https://github.com/CoqHott/exceptional-tt"
 dev-repo: "https://github.com/CoqHott/exceptional-tt.git"
 build: [
-  [make "-j%{jobs}%"]
+  [make "COQBIN=\"\"" "-j%{jobs}%"]
 ]
 install: [make "install"]
 remove: [make "uninstall"]
