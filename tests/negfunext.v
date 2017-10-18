@@ -6,40 +6,36 @@ Effect Translate False.
 Parametricity Translate False.
 Effect Translate eq.
 Parametricity Translate eq.
+Effect Translate prod.
+Parametricity Translate prod.
+Effect Translate sigT.
+Parametricity Translate sigT.
 
-Effect Definition not_id : unit -> unit using unit.
+Definition id_top (_ : unit) := tt.
+Definition id_bot (u : unit) := u.
+
+Effect Translate id_top.
+Effect Translate id_bot.
+Parametricity Translate id_top.
+Parametricity Translate id_bot.
+
+Lemma ext_eq : forall u, id_top u = id_bot u.
 Proof.
-intros E _; apply ttᵉ.
-Defined.
+intros []; reflexivity.
+Qed.
 
-Parametricity Definition not_id using unit.
-Proof.
-intros; constructor.
-Defined.
+Effect Translate ext_eq.
+Parametricity Translate ext_eq.
 
-Effect Definition ext_eq : forall u, not_id u = u using unit.
-Proof.
-intros E [|].
-+ constructor.
-+ refine (eqᴱ _ _ _ _ e).
-Defined.
-
-Parametricity Definition ext_eq using unit.
-Proof.
-intros E u uᴿ.
-refine (match uᴿ with ttᴿ _ => _ end).
-constructor.
-Defined.
-
-Effect Definition not_int_eq : not_id = (fun u => u) -> False using unit.
+Effect Definition not_int_eq : id_top = id_bot -> False using unit.
 Proof.
 intros E rw.
-assert (H : E + (not_idᵉ = (fun u => u))).
+assert (H : E + (id_topᵉ E = id_botᵉ E)).
 refine (match rw with eq_reflᵉ _ _ _ => inr eq_refl | eqᴱ _ _ _ _ e => inl e end).
 clear rw; destruct H as [e|H].
 + apply (Falseᴱ _ e).
 + absurd (unitᴱ E tt = ttᵉ E); [discriminate|].
-  change (ttᵉ E) with (not_idᵉ (unitᴱ E tt)).
+  change (ttᵉ E) with (id_topᵉ _ (unitᴱ E tt)).
   rewrite H; reflexivity.
 Defined.
 
@@ -47,10 +43,16 @@ Parametricity Definition not_int_eq using unit.
 Proof.
 intros E u uᴿ.
 exfalso.
-unfold not_idᵉ in *; cbn in *.
-assert (Hrw : (fun _ : unitᵒ unit => ttᵉ unit) = (fun u : unitᵒ E => u)).
+unfold id_topᵉ in *; cbn in *.
+assert (Hrw : id_topᵉ E = id_botᵉ E).
 { destruct uᴿ; reflexivity. }
 + absurd (unitᴱ E tt = ttᵉ E); [discriminate|].
-  change (ttᵉ E) with ((fun _ : unitᵒ unit => ttᵉ unit) (unitᴱ E tt)).
+  change (ttᵉ E) with (id_topᵉ E (unitᴱ E tt)).
   rewrite Hrw; reflexivity.
 Defined.
+
+Definition negfunext : {f : unit -> unit & {g : unit -> unit & prod (f = g -> False) (forall u, f u = g u) }} :=
+  existT _ id_top (existT _ id_bot (pair not_int_eq ext_eq)).
+
+Effect Translate negfunext using unit.
+Parametricity Translate negfunext using unit.
