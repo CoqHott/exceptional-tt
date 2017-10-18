@@ -1,4 +1,3 @@
--bypass-API
 -R theories/ Effects
 -I src/
 

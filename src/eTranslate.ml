@@ -313,7 +313,7 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   let (sigma, env', ctxe) = otranslate_context env sigma ctx in
   let (sigma, ce) = otranslate env sigma c in
   let map sigma p = otranslate env sigma p in
-  let (sigma, pe) = Array.fold_left_map map sigma p in
+  let (sigma, pe) = Array.fold_map map sigma p in
   let nE = Environ.nb_rel env'.env_tgt in
   (** The default constructor has as arguments the indices of the block plus an error *)
   let default_ctx = LocalAssum (Name name_err, mkRel (nE - 1)) :: List.tl ctxe in
@@ -354,7 +354,7 @@ and otranslate_recdef env sigma (nas, tys, bodies) =
   in
   let (env, sigma, tyse) = Array.fold_left2_i fold (env, sigma, []) nas tys in
   let tyse = Array.rev_of_list tyse in
-  let (sigma, bodiese) = Array.fold_left_map (fun sigma c -> otranslate env sigma c) sigma bodies in
+  let (sigma, bodiese) = Array.fold_map (fun sigma c -> otranslate env sigma c) sigma bodies in
   (sigma, (nas, tyse, bodiese))
 
 (* Special handling of types not to clutter the translation.
@@ -538,7 +538,7 @@ let rec optranslate env sigma c0 = match EConstr.kind sigma c0 with
   let cir = ptranslate_case_info env sigma ci mip in
   let (sigma, cr) = optranslate env sigma c in
   let map sigma p = optranslate env sigma p in
-  let (sigma, pr) = Array.fold_left_map map sigma p in
+  let (sigma, pr) = Array.fold_map map sigma p in
   let (ctx, r) = EConstr.decompose_lam_assum sigma r in
   let (sigma, nenv, ctxr) = optranslate_context env sigma ctx in
   let (sigma, rr) = optranslate_type nenv sigma r in
@@ -631,7 +631,7 @@ and optranslate_fixpoint env sigma (idx, i) (nas, tys, bds) =
     let cir = ptranslate_case_info nenv sigma ci mip in
     let cr = mkRel 1 in
     let map sigma p = optranslate nenv sigma p in
-    let (sigma, pr) = Array.fold_left_map map sigma p in
+    let (sigma, pr) = Array.fold_map map sigma p in
     let (ctx, r) = EConstr.decompose_lam_assum sigma r in
     let (sigma, nenv, ctxr) = optranslate_context nenv sigma ctx in
     let (sigma, rr) = optranslate_type nenv sigma r in
@@ -652,7 +652,7 @@ and optranslate_fixpoint env sigma (idx, i) (nas, tys, bds) =
   let tysr = Array.rev_of_list tysr in
   let idxr = Array.map (fun i -> 2 * i + 1) idx in
   let nasr = Array.map pname nas in
-  let ((_, sigma), bdsr) = Array.fold_left_map fold (0, sigma) bds in
+  let ((_, sigma), bdsr) = Array.fold_map fold (0, sigma) bds in
   let r = mkFix ((idxr, i), (nasr, tysr, bdsr)) in
   (sigma, r)
 
@@ -810,7 +810,7 @@ let translate_constructors env sigma mind0 mind ind0 ind =
     let te = abstract_mind sigma mutind nblock (Environ.nb_rel env.env_tgt) te in
     (sigma, te)
   in
-  List.fold_left_map map sigma ind.mind_entry_lc
+  List.fold_map map sigma ind.mind_entry_lc
 
 let translate_inductive_body env sigma mind0 mind n ind0 ind =
   let typename = translate_internal_name ind.mind_entry_typename in
@@ -849,7 +849,7 @@ let translate_inductive err translator env _ mind0 (mind : Entries.mutual_induct
   let inds = List.combine (Array.to_list mind0.mind_packets) mind.mind_entry_inds in
   let inds = List.mapi (fun i (ind, ind0) -> (i, ind, ind0)) inds in
   let map sigma (n, ind0, ind) = translate_inductive_body env sigma mind0 mind n ind0 ind in
-  let sigma, inds = List.fold_left_map map sigma inds in
+  let sigma, inds = List.fold_map map sigma inds in
   let sigma, inds, params = EUtil.retype_inductive env.env_tgt sigma (EConstr.rel_context env.env_tgt) inds in
   let params = List.map to_local_entry params in
   let uctx = UState.context (Evd.evar_universe_context sigma) in
@@ -917,7 +917,7 @@ let ptranslate_constructors env sigma mutind0 mind0 mind ind0 ind =
     let tr = abstract_mind sigma mutind nblock (Environ.nb_rel env.penv_ptgt) tr in
     ((succ n, sigma), tr)
   in
-  let ((_, sigma), ans) = List.fold_left_map map (1, sigma) ind.mind_entry_lc in
+  let ((_, sigma), ans) = List.fold_map map (1, sigma) ind.mind_entry_lc in
   (sigma, ans)
 
 let ptranslate_inductive_body err env sigma mutind mind0 mind n ind0 ind =
@@ -957,7 +957,7 @@ let ptranslate_inductive err translator env mutind mind0 (mind : Entries.mutual_
   let inds = List.combine (Array.to_list mind0.mind_packets) mind.mind_entry_inds in
   let inds = List.mapi (fun i (ind, ind0) -> (i, ind, ind0)) inds in
   let map sigma (n, ind0, ind) = ptranslate_inductive_body err env sigma mutind mind0 mind n ind0 ind in
-  let sigma, inds = List.fold_left_map map sigma inds in
+  let sigma, inds = List.fold_map map sigma inds in
   let sigma, inds, params = EUtil.retype_inductive env.penv_ptgt sigma (EConstr.rel_context env.penv_ptgt) inds in
   let params = List.map to_local_entry params in
   let uctx = UState.context (Evd.evar_universe_context sigma) in

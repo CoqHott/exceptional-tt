@@ -134,7 +134,7 @@ let retype_inductive env sigma params inds =
     let (sigma, _) = Typing.type_of env sigma arity in
     (sigma, arity)
   in
-  let (sigma, extarities) = List.fold_left_map mk_arities sigma inds in
+  let (sigma, extarities) = List.fold_map mk_arities sigma inds in
   let fold env c ind = EConstr.push_rel (LocalAssum (Name ind.mind_entry_typename, c)) env in
   let env = List.fold_left2 fold env extarities inds in
   let env = EConstr.push_rel_context params env in
@@ -146,7 +146,7 @@ let retype_inductive env sigma params inds =
     let sigma = List.fold_left fold sigma ind.mind_entry_lc in
     (sigma, ind.mind_entry_lc)
   in
-  let sigma, constructors = List.fold_left_map fold sigma inds in
+  let sigma, constructors = List.fold_map fold sigma inds in
   let arities = List.map (fun ind -> ind.mind_entry_arity) inds in
   let (sigma, arities) = inductive_levels env sigma arities constructors in
   let params = List.map (fun d -> EConstr.to_rel_decl sigma d) params in
