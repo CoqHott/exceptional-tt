@@ -235,7 +235,8 @@ let translate ?exn ?names gr =
   let ans = match gr with
   | ConstRef cst -> translate_constant err translator cst ids
   | IndRef ind -> translate_inductive err translator ind
-  | _ -> user_err (str "Translation not handled.")
+  | ConstructRef _ -> user_err (str "Use the translation over the corresponding inductive type instead.")
+  | VarRef _ -> user_err (str "Variable translation not handled.")
   in
   let ext = ExtendEffect (ExtEffect, err, ans) in
   let () = Lib.add_anonymous_leaf (in_translator ext) in
@@ -250,7 +251,8 @@ let ptranslate ?exn ?names gr =
   let ans = match gr with
   | ConstRef cst -> ptranslate_constant err translator cst ids
   | IndRef ind -> ptranslate_inductive err translator ind
-  | _ -> user_err (str "Translation not handled.")
+  | ConstructRef _ -> user_err (str "Use the translation over the corresponding inductive type instead.")
+  | VarRef _ -> user_err (str "Variable translation not handled.")
   in
   let ext = ExtendEffect (ExtParam, err, ans) in
   let () = Lib.add_anonymous_leaf (in_translator ext) in
