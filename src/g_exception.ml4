@@ -33,3 +33,9 @@ VERNAC COMMAND EXTEND EffectImplementation CLASSIFIED BY classify_impl
 | [ "Parametricity" "Definition" global(gr) "using" reference(exn) ] ->
   [ EPlugin.pimplement ~exn gr ]
 END
+
+
+VERNAC COMMAND EXTEND ArityCheck CLASSIFIED AS QUERY
+| [ "Weakly" "Translate" global(gr) ] ->
+  [ EPlugin.wtranslate gr ]
+END

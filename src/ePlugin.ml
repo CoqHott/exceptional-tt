@@ -18,6 +18,10 @@ let ptranslate_name id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᴿ")
 
+let wtranslate_name id =
+  let id = Id.to_string id in
+  Id.of_string (id ^ "_")
+
 (** Record of translation between globals *)
 
 type translator = ETranslate.translator
@@ -250,7 +254,7 @@ let ptranslate ?exn ?names gr =
   let translator = !translator in
   let ans = match gr with
   | ConstRef cst -> ptranslate_constant err translator cst ids
-  | IndRef ind -> ptranslate_inductive err translator ind
+  | IndRef ind -> ptranslate_inductive err translator ind 
   | ConstructRef _ -> user_err (str "Use the translation over the corresponding inductive type instead.")
   | VarRef _ -> user_err (str "Variable translation not handled.")
   in
@@ -342,3 +346,45 @@ let _ = register_handler begin function
   str "Missing primitive: " ++ ref ++ str "."
 | _ -> raise Unhandled
 end
+
+(** Arity check *)
+
+let wtranslate_constant err translator cst ids =
+  let id = on_one_id wtranslate_name ids cst in
+  (** Translate the type *)
+  let env = Global.env () in
+  let sigma = Evd.from_env env in
+  let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
+  let (sigma, (_, u)) = Evd. fresh_constant_instance env sigma cst in
+  let typ = Vars.subst_instance_constr u typ in
+  let gen, c_ =
+    try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
+    with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
+  in
+  let typ = EConstr.of_constr typ in
+  let (sigma, typ) = ETranslate.wtranslate_type err translator env sigma typ in
+  let () = Feedback.msg_info (str "T1!: " ++ Printer.pr_econstr typ) in
+  let (sigma, c_) = Evd.fresh_global env sigma c_ in
+  let (sigma, c_) = ETranslate.instantiate_error err env sigma gen (EConstr.of_constr c_) in
+  let typ = EConstr.Vars.subst1 c_ typ in
+  let () = Feedback.msg_info (str "T2!: " ++ Printer.pr_econstr typ) in
+  ()
+
+let wtranslate  ?exn ?names gr =
+  let ids = names in
+  let err = Option.map Nametab.global exn in
+  let gr = Nametab.global gr in
+  let translator = !translator in
+  let ans = match gr with
+  | ConstRef cst -> 
+     (
+       try wtranslate_constant err translator cst ids
+       with _ -> ()
+     )
+  | IndRef ind -> user_err (str "Doing changes") (* ptranslate_inductive err translator ind *)
+  | ConstructRef _ -> user_err (str "Use the translation over the corresponding inductive type instead.")
+  | VarRef _ -> user_err (str "Variable translation not handled.")
+  in
+  ()
+                       
+                          
