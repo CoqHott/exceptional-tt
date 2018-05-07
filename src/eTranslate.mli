@@ -21,6 +21,8 @@ type translator = {
   inds : MutInd.t global_translation Mindmap.t;
   prefs : global_reference global_translation Cmap.t;
   pinds : MutInd.t global_translation Mindmap.t;
+  wrefs : global_reference global_translation Cmap.t;
+  winds : MutInd.t global_translation Mindmap.t;
 }
 
 val translate :
@@ -43,9 +45,12 @@ val ptranslate_inductive :
   effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
 
-
 val wtranslate :
   effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
 
 val wtranslate_type :
   effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
+
+val wtranslate_inductive :
+  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
+    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry

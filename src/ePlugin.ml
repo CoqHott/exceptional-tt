@@ -20,7 +20,7 @@ let ptranslate_name id =
 
 let wtranslate_name id =
   let id = Id.to_string id in
-  Id.of_string (id ^ "_")
+  Id.of_string (id ^ "ᵂ")
 
 (** Record of translation between globals *)
 
@@ -31,6 +31,8 @@ let empty_translator = {
   inds = Mindmap.empty;
   prefs = Cmap.empty;
   pinds = Mindmap.empty;
+  wrefs = Cmap.empty;
+  winds = Mindmap.empty;
 }
 
 let translator : translator ref =
@@ -39,6 +41,7 @@ let translator : translator ref =
 type extension_type =
 | ExtEffect
 | ExtParam
+| ExtWeakly
 
 type extension =
 | ExtConstant of Constant.t * global_reference
@@ -84,6 +87,10 @@ let extend_translator tr knd exn l =
     { accu with prefs = extend_constant exn cst gr accu.prefs }
   | ExtParam, ExtInductive (mind, mind') ->
     { accu with pinds = extend_inductive exn mind mind' accu.pinds }
+  | ExtWeakly, ExtConstant (cst, gr) ->
+    { accu with wrefs = extend_constant exn cst gr accu.wrefs }
+  | ExtWeakly, ExtInductive (mind, mind') ->
+    { accu with winds = extend_inductive exn mind mind' accu.winds }
   in
   List.fold_left fold tr l
 
@@ -363,28 +370,37 @@ let wtranslate_constant err translator cst ids =
   in
   let typ = EConstr.of_constr typ in
   let (sigma, typ) = ETranslate.wtranslate_type err translator env sigma typ in
-  let () = Feedback.msg_info (str "T1!: " ++ Printer.pr_econstr typ) in
   let (sigma, c_) = Evd.fresh_global env sigma c_ in
   let (sigma, c_) = ETranslate.instantiate_error err env sigma gen (EConstr.of_constr c_) in
   let typ = EConstr.Vars.subst1 c_ typ in
-  let () = Feedback.msg_info (str "T2!: " ++ Printer.pr_econstr typ) in
-  ()
+  let sigma, _ = Typing.type_of env sigma typ in
+  let body = Option.get (Global.body_of_constant cst) in
+  let body = EConstr.of_constr body in
+  let (sigma, body) = ETranslate.wtranslate err translator env sigma body in
+  let evdref = ref sigma in
+  let () = Typing.e_check env evdref body typ in
+  let sigma = !evdref in
+  let body = EConstr.to_constr sigma body in
+  let typ = EConstr.to_constr sigma typ in
+  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  let cst_ = declare_constant id uctx body typ in
+  [ExtConstant (cst, ConstRef cst_)]
 
-let wtranslate  ?exn ?names gr =
+let wtranslate_inductive err translator ind =
+  translate_inductive_gen ETranslate.wtranslate_inductive err translator ind
+
+let wtranslate ?exn ?names gr =
   let ids = names in
   let err = Option.map Nametab.global exn in
   let gr = Nametab.global gr in
   let translator = !translator in
   let ans = match gr with
-  | ConstRef cst -> 
-     (
-       try wtranslate_constant err translator cst ids
-       with _ -> ()
-     )
-  | IndRef ind -> user_err (str "Doing changes") (* ptranslate_inductive err translator ind *)
+  | ConstRef cst -> wtranslate_constant err translator cst ids
+  | IndRef ind -> wtranslate_inductive err translator ind 
   | ConstructRef _ -> user_err (str "Use the translation over the corresponding inductive type instead.")
   | VarRef _ -> user_err (str "Variable translation not handled.")
   in
-  ()
-                       
-                          
+  let ext = ExtendEffect (ExtWeakly, err, ans) in
+  let () = Lib.add_anonymous_leaf (in_translator ext) in
+  let msg = prlist_with_sep fnl msg_translate ans in
+  Feedback.msg_info msg

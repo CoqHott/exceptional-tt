@@ -1,4 +1,4 @@
--R theories/ Effects
+-R theories/ Weakly
 -I src/
 
 src/eUtil.ml

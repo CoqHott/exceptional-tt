@@ -13,12 +13,16 @@ VERNAC COMMAND EXTEND EffectTranslation CLASSIFIED AS SIDEFF
   [ EPlugin.translate ~names gr ]
 | [ "Effect" "Translate" global(gr) "using" global(exn) ] ->
   [ EPlugin.translate ~exn gr ]
+
 | [ "Parametricity" "Translate" global(gr) ] ->
   [ EPlugin.ptranslate gr ]
 | [ "Parametricity" "Translate" global(gr) "as" ne_ident_list(names) ] ->
   [ EPlugin.ptranslate ~names gr ]
 | [ "Parametricity" "Translate" global(gr) "using" global(exn) ] ->
   [ EPlugin.ptranslate ~exn gr ]
+
+| [ "Weakly" "Translate" global(gr) ] ->
+  [ EPlugin.wtranslate gr ]
 END
 
 let classify_impl _ = Vernacexpr.(VtStartProof ("Classic",Doesn'tGuaranteeOpacity,[]), VtLater)
@@ -34,8 +38,3 @@ VERNAC COMMAND EXTEND EffectImplementation CLASSIFIED BY classify_impl
   [ EPlugin.pimplement ~exn gr ]
 END
 
-
-VERNAC COMMAND EXTEND ArityCheck CLASSIFIED AS QUERY
-| [ "Weakly" "Translate" global(gr) ] ->
-  [ EPlugin.wtranslate gr ]
-END
