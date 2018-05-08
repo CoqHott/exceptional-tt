@@ -299,9 +299,8 @@ let pimplement ?exn gr =
   in
   let id = Label.to_id (Constant.label cst) in
   let sigma = Evd.from_env env in
-  let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
-  let (sigma, (_, u)) = Evd.fresh_constant_instance env sigma cst in
-  let typ = Vars.subst_instance_constr u typ in
+  (** Drop the context as translation doesn't care. TODO: handle this properly. *)
+  let (typ, _) = Global.type_of_global_in_context env (ConstRef cst) in
   let gen, c_ =
     try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
     with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
@@ -311,6 +310,8 @@ let pimplement ?exn gr =
   let (sigma, c_) = Evd.fresh_global env sigma c_ in
   let (sigma, c_) = instantiate_error env sigma err gen c_ in
   let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
+  (** Retype for constraints *)
+  let (sigma, _) = Typing.type_of env sigma typ in
   let hook _ dst =
     (** Attach the axiom to the implementation *)
     let ext = ExtendEffect (ExtParam, err, [ExtConstant (cst, dst)]) in
