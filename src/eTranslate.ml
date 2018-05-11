@@ -790,7 +790,7 @@ let abstract_mind sigma mind n k c =
     if m <= k then c
     else mkRel (k + m)
   | Ind ((ind, m), _) when MutInd.equal mind ind ->
-    mkRel (k + m + 1)
+    mkRel (k + n - m)
   | _ ->
     map_with_binders sigma succ aux k c
   in
@@ -798,8 +798,8 @@ let abstract_mind sigma mind n k c =
 
 let translate_constructors env sigma mind0 mind ind0 ind =
   let mutind, env = extend_inductive env mind0 mind in
-  let mk_ind n = mkInd (mutind, n) in
   let nblock = Array.length mind0.mind_packets in
+  let mk_ind n = mkInd (mutind, nblock - (n + 1)) in
   let subst0 = List.init nblock mk_ind in
   let map sigma t =
     (** A bit of term mangling: indices in the context referring to the
@@ -830,7 +830,7 @@ let translate_inductive_body env sigma mind0 mind n ind0 ind =
   in
   (** FIXME, probably wrong indices for mutual inductive blocks *)
   let (_, fail_args) = List.fold_left fail_arg (2, []) (Environ.rel_context arity_env.env_tgt) in
-  let n = 2 + n + Environ.nb_rel arity_env.env_tgt in
+  let n = 1 + (mind0.mind_ntypes - n) + Environ.nb_rel arity_env.env_tgt in
   let fail_case = applist (mkRel n, fail_args) in
   let fail_ctx = LocalAssum (Anonymous, mkRel (1 + List.length ind0.mind_arity_ctxt)) :: arity_ctx' in
   let fail_case = it_mkProd_or_LetIn fail_case fail_ctx in
@@ -892,8 +892,8 @@ let pextend_inductive env (mutind0, _) mind0 mind =
 
 let ptranslate_constructors env sigma mutind0 mind0 mind ind0 ind =
   let mutind, env = pextend_inductive env mutind0 mind0 mind in
-  let mk_ind n = mkInd (mutind, n) in
   let nblock = Array.length mind0.mind_packets in
+  let mk_ind n = mkInd (mutind, nblock - (n + 1)) in
   let subst0 = List.init nblock mk_ind in
   let map (n, sigma) t =
     (** A bit of term mangling: indices in the context referring to the
