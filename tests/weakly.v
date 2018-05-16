@@ -4,23 +4,46 @@ Require Import Weakly.Effects.
 Set Printing Universes.
 Set Printing Implicit.
 
-Inductive mTest1: Prop :=
-| cmTest11: mTest1
-| cmTest12: mTest1 -> mTest3 -> mTest2 -> mTest1
-| cmTest13: mTest2 -> mTest1
-with
-mTest2: Prop :=
-| cmTest21: mTest1 -> mTest2
-with
-mTest3: Prop :=
-| cmTest31: mTest1 -> mTest2 -> mTest3
-with
-mTest4: Prop :=
-| cmTest41: mTest4
-| cmTest42: mTest1 -> mTest2 -> mTest3 -> mTest4 -> mTest4.
+Effect Translate nat.
+Effect Translate bool. 
+Effect Translate list.
+Effect Translate eq.
+Effect Translate True.
+Weakly Translate nat.
+Weakly Translate bool.
+Weakly Translate list.
+Weakly Translate eq.
+Weakly Translate True.
 
-Effect Translate mTest1. Parametricity Translate mTest1.
+Inductive mTest1 (A: Type): Type -> Prop :=
+| cmTest11: mTest1 A bool
+| cmTest12: mTest1 A nat -> mTest3 A -> mTest2 A bool 0 -> mTest1 A bool
+| cmTest13: mTest2 A nat 10 -> mTest1 A bool
+with
+mTest2 (A:Type): Type -> nat -> Prop :=
+| cmTest21: mTest1 A (list nat) -> mTest2 A nat 0
+with
+mTest3 (A: Type): Prop :=
+| cmTest31: mTest1 A nat -> mTest2 A bool 10-> mTest3 A
+with
+mTest4 (A: Type): Prop :=
+| cmTest41: mTest4 A
+| cmTest42: mTest1 A bool -> mTest2 A nat 10-> mTest3 A -> mTest4 A -> mTest4 A.
+
+Definition testList := let A:= nat in list A.
+
+Effect Translate mTest1.
 Weakly Translate mTest1.
+
+Definition match1 (m1: mTest1 nat bool) :=
+  match m1 with
+  | cmTest11 _ => I
+  | cmTest12 _ a b c => I
+  | cmTest13 _ a => I
+  end.
+
+Effect Translate match1.
+Weakly Translate match1.
 
 Inductive even: nat -> Prop :=
 | evZ: even 0
@@ -117,3 +140,5 @@ Weakly Translate t8.
 Definition t9 (A: Type) (B: Prop) (P: A -> B -> Prop) (a: A) (b: B): P a b -> Prop := fun _ => True.
 Effect Translate t9.
 Weakly Translate t9.
+
+  

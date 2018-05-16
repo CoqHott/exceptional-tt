@@ -1126,6 +1126,11 @@ let arity_type_prop_check env sigma ty =
   is_prop_sort sort || (try (is_prop_sort (snd (Reduction.dest_arity env ty)))
                        with Reduction.NotArity -> false)
 
+let one_ind_in_prop ind = 
+  match ind.mind_arity with
+  | RegularArity ar -> is_prop_sort ar.mind_sort
+  | TemplateArity _ -> false
+
 let wargument_of_prod env sigma prod =
   let weak_dom = arity_type_prop_check env sigma prod in
   let rec arg_calc env' sigma' t accum = match EConstr.kind sigma' t with
@@ -1138,6 +1143,28 @@ let wargument_of_prod env sigma prod =
     | _ -> accum
   in
   List.rev (arg_calc env sigma prod [])
+
+
+let wtranslate_case_info env sigma ci mip =
+  let gen, ci_ind = get_wind env ci.ci_ind in
+  Inductiveops.make_case_info env.wenv_wtgt ci_ind ci.ci_pp_info.style
+(*
+  let mutual_wind = Environ.lookup_mind (fst ci_ind) env in
+  let ci_npar = if gen then 1 + 2 * ci.ci_npar else 2 * ci.ci_npar in
+  let map n = 2 * n in
+  let ci_cstr_ndecls = Array.map map ci.ci_cstr_ndecls in
+  let ci_cstr_nargs = Array.map map ci.ci_cstr_nargs in
+  let rec dup = function
+  | [] -> []
+  | x :: l -> x :: x :: (dup l)
+  in
+  let ci_pp_info = {
+    ind_tags = (not gen) :: dup ci.ci_pp_info.ind_tags;
+    cstr_tags = Array.map (fun l -> (not gen) :: dup l) ci.ci_pp_info.cstr_tags;
+    style = ci.ci_pp_info.style;
+  } in
+  { ci_ind; ci_npar; ci_cstr_ndecls; ci_cstr_nargs; ci_pp_info; }
+ *)
 
 let rec owtranslate env sigma c = match EConstr.kind sigma c with
   | Rel n ->
@@ -1216,6 +1243,24 @@ let rec owtranslate env sigma c = match EConstr.kind sigma c with
   | Construct (c, _) ->
      let (sigma, c) = apply_wglobal env sigma (ConstructRef c) in
      (sigma, c)
+  | Case (ci, r, d, p) ->
+     let (_, mip) = Inductive.lookup_mind_specif env.wenv_src ci.ci_ind in
+     let ciw = wtranslate_case_info env sigma ci mip in
+     let (sigma, dw) = owtranslate env sigma d in
+     let map sigma p = owtranslate env sigma p in
+     let (sigma, pw) = Array.fold_map map sigma p in
+     let (ctx, r) = EConstr.decompose_lam_assum sigma r in
+     let weakly_dom = one_ind_in_prop mip in
+     let (sigma, nenv, ctxw) = owtranslate_context env sigma weakly_dom ctx in
+     let (sigma, rr) = owtranslate_type nenv sigma r in
+     let c = Vars.lift (List.length ctx) c in
+     let (ci, r, _, p) = destCase sigma c in
+     let c = mkCase (ci, r, mkRel 1, p) in
+     let (sigma, ce) = otranslate (wproject nenv) sigma c in
+     let ce = wlift nenv ce in
+     let rw = it_mkLambda_or_LetIn (Vars.subst1 ce rr) ctxw in
+     let w = mkCase (ciw, rw, dw, pw) in
+     (sigma, w)
   | _ ->
      (sigma, c)
 and owtranslate_type env sigma c = match EConstr.kind sigma c with
@@ -1419,13 +1464,7 @@ let wtranslate_inductive_body err env sigma weakly_dom mutind mind_d mind_e n in
 
 let wtranslate_inductive err translator env mutind mind_d (mind_e : Entries.mutual_inductive_entry) =
   let sigma = Evd.from_env env in
-  let weakly_arities = 
-    Array.map 
-      (fun one_body -> match one_body.mind_arity with
-                       | RegularArity ar -> is_prop_sort ar.mind_sort
-                       | TemplateArity _ -> false )
-      mind_d.mind_packets
-  in
+  let weakly_arities = Array.map one_ind_in_prop mind_d.mind_packets in
   let weakly_dom = Array.get weakly_arities 0 in
   let _ = if Array.for_all (fun pr -> pr == weakly_dom) weakly_arities 
           then () 
