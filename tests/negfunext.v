@@ -1,4 +1,4 @@
-Require Import Effects.Effects.
+Require Import Weakly.Effects.
 
 Effect Translate unit.
 Parametricity Translate unit.
