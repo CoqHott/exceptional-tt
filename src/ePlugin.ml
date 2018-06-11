@@ -354,6 +354,8 @@ let _ = register_handler begin function
 | _ -> raise Unhandled
 end
 
+
+(** New weakly Translation *)
 (** Arity check *)
 
 let wtranslate_constant err translator cst ids =
@@ -404,3 +406,36 @@ let wtranslate ?exn ?names gr =
   let () = Lib.add_anonymous_leaf (in_translator ext) in
   let msg = prlist_with_sep fnl msg_translate ans in
   Feedback.msg_info msg
+
+let wimplement ?exn gr =
+  let env = Global.env () in
+  let translator = !translator in
+  let err = Option.map Nametab.global exn in
+  let cst = match Nametab.global gr with
+  | ConstRef cst -> cst
+  | _ -> user_err (str "Weak parametricity can only be implemented for constants")
+  in
+  let id = Label.to_id (Constant.label cst) in
+  let sigma = Evd.from_env env in
+  let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
+  let (sigma, (_, u)) = Evd.fresh_constant_instance env sigma cst in
+  let typ = Vars.subst_instance_constr u typ in
+  let gen, c_ =
+    try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
+    with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
+  in
+  let typ = EConstr.of_constr typ in
+  let (sigma, typ) = ETranslate.wtranslate_type err translator env sigma typ in
+  let (sigma, c_) = Evd.fresh_global env sigma c_ in
+  let (sigma, c_) = instantiate_error env sigma err gen c_ in
+  let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
+  let hook _ dst =
+    (** Attach the axiom to the implementation *)
+    let ext = ExtendEffect (ExtParam, err, [ExtConstant (cst, dst)]) in
+    Lib.add_anonymous_leaf (in_translator ext)
+  in
+  let hook ctx = Lemmas.mk_hook hook in
+  let kind = Global, false, DefinitionBody Definition in
+  let idr = wtranslate_name id in
+  let () = Lemmas.start_proof_univs idr kind sigma typ hook in
+  ()

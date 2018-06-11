@@ -23,6 +23,8 @@ VERNAC COMMAND EXTEND EffectTranslation CLASSIFIED AS SIDEFF
 
 | [ "Weakly" "Translate" global(gr) ] ->
   [ EPlugin.wtranslate gr ]
+| [ "Weakly" "Translate" global(gr) "using" global(exn)] ->
+  [ EPlugin.wtranslate ~exn gr ]
 END
 
 let classify_impl _ = Vernacexpr.(VtStartProof ("Classic",Doesn'tGuaranteeOpacity,[]), VtLater)
@@ -30,10 +32,16 @@ let classify_impl _ = Vernacexpr.(VtStartProof ("Classic",Doesn'tGuaranteeOpacit
 VERNAC COMMAND EXTEND EffectImplementation CLASSIFIED BY classify_impl
 | [ "Effect" "Definition" ident(id) ":" lconstr(typ) ] ->
   [ EPlugin.implement id typ ]
-| [ "Parametricity" "Definition" global(gr) ] ->
-  [ EPlugin.pimplement gr ]
 | [ "Effect" "Definition" ident(id) ":" lconstr(typ) "using" reference(exn) ] ->
   [ EPlugin.implement ~exn id typ ]
+
+| [ "Weakly" "Definition" global(gr) ] ->
+  [ EPlugin.wimplement gr ]
+| [ "Weakly" "Definition" global(gr)  "using" reference(exn) ] ->
+  [ EPlugin.wimplement ~exn gr ]
+
+| [ "Parametricity" "Definition" global(gr) ] ->
+  [ EPlugin.pimplement gr ]
 | [ "Parametricity" "Definition" global(gr) "using" reference(exn) ] ->
   [ EPlugin.pimplement ~exn gr ]
 END
