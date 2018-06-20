@@ -429,13 +429,39 @@ let wimplement ?exn gr =
   let (sigma, c_) = Evd.fresh_global env sigma c_ in
   let (sigma, c_) = instantiate_error env sigma err gen c_ in
   let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
+  let (sigma, _) = Typing.type_of env sigma typ in
   let hook _ dst =
     (** Attach the axiom to the implementation *)
-    let ext = ExtendEffect (ExtParam, err, [ExtConstant (cst, dst)]) in
+    let ext = ExtendEffect (ExtWeakly, err, [ExtConstant (cst, dst)]) in
     Lib.add_anonymous_leaf (in_translator ext)
   in
   let hook ctx = Lemmas.mk_hook hook in
+  let (sigma, _) = Typing.type_of env sigma typ in
   let kind = Global, false, DefinitionBody Definition in
   let idr = wtranslate_name id in
   let () = Lemmas.start_proof_univs idr kind sigma typ hook in
   ()
+
+
+let g (i:Libnames.reference) (g: int) = g
+
+(** List translate *)
+
+module Generic = struct
+open Libnames
+open Names
+
+let generic_translate ?exn
+      (gr_list:reference list) 
+      (generic: ?exn:reference -> ?names:Id.t list-> reference -> unit) =
+  let fold () gr = generic ?exn gr in
+  List.fold_left fold () gr_list
+end
+open Generic
+                      
+let list_translate ?exn gr_list =
+  generic_translate ?exn gr_list translate
+let list_ptranslate ?exn gr_list = 
+  generic_translate ?exn gr_list ptranslate
+let list_wtranslate ?exn gr_list = 
+  generic_translate ?exn gr_list wtranslate

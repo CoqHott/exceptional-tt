@@ -25,6 +25,20 @@ VERNAC COMMAND EXTEND EffectTranslation CLASSIFIED AS SIDEFF
   [ EPlugin.wtranslate gr ]
 | [ "Weakly" "Translate" global(gr) "using" global(exn)] ->
   [ EPlugin.wtranslate ~exn gr ]
+
+| [ "Effect" "List" "Translate" global_list(gr) ] ->
+  [ EPlugin.list_translate gr ]
+| [ "Effect" "List" "Translate" global_list(gr) "using" global(exn) ] ->
+  [ EPlugin.list_translate ~exn gr ]
+| [ "Weakly" "List" "Translate" global_list(gr) ] ->
+  [ EPlugin.list_wtranslate gr ]
+| [ "Weakly" "List" "Translate" global_list(gr) "using" global(exn) ] ->
+  [ EPlugin.list_wtranslate ~exn gr ]
+| [ "Parametricity" "List" "Translate" global_list(gr) ] ->
+  [ EPlugin.list_ptranslate gr ]
+| [ "Parametricity" "List" "Translate" global_list(gr) "using" global(exn) ] ->
+  [ EPlugin.list_ptranslate ~exn gr ]
+
 END
 
 let classify_impl _ = Vernacexpr.(VtStartProof ("Classic",Doesn'tGuaranteeOpacity,[]), VtLater)

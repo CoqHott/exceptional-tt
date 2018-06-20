@@ -1,3 +1,7 @@
+# -*- mode: gitignore; -*-
+*~
+\#*\#
+
 *.aux
 *.vo
 *.glob
