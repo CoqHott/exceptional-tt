@@ -1,6 +1,4 @@
-
 Require Import Weakly.Effects.
-Set Universe Polymorphism.
 
 Effect List Translate nat bool list eq ex False True unit.
 Weakly List Translate nat bool list eq ex False True unit. 
@@ -102,46 +100,4 @@ Fail Weakly Translate nat_fail using unit.
 Effect List Translate le lt gt.
 Weakly List Translate le lt gt.
 
-Definition pred (n: nat) : nat :=
-  match n with
-  | 0 => raise nat
-  | S n => n
-  end.
-
-Effect Translate pred using unit.
-
-Definition param_nat: nat -> Prop := fun _ => True.
-Effect Translate param_nat.
-(* Proof. intros E n. exact (TypeVal E (Trueᵒ E) (Trueᴱ E)). Defined. *)
-Set Printing Universes.
-Weakly Definition param_nat.
-Proof. intros E n Hn. exact (natᴿ E n). Defined.
-
-Theorem valid_pred: forall n, param_nat n ->  0 < n -> (pred n = raise nat -> False).
-Proof.
-  intros n Hp Hltn Heq.
-  destruct n.
-  - inversion Hltn.
-  - simpl in Heq. destruct n; [exact (O_fail Heq) | exact (S_fail n Heq)].
-Defined.
-
-Effect List Translate eq_ind False_ind.
-Weakly List Translate eq_ind False_ind.
-
-Lemma ll: 0 < 0 -> False.
-Proof. intros H; inversion H. Qed.
-Effect Translate ll.
-
-Effect Translate valid_pred using unit.
-Fail Weakly Translate valid_pred using unit.
-Weakly Definition valid_pred using unit.
-Proof.
-  intros E n Hparam Hparamᵂ Hlt Hltᵂ Heq Heqᵂ.
-  destruct n.
-  - unfold ltᵉ in Hlt. simpl in Hlt. unfold ltᵂ in Hltᵂ. inversion Hltᵂ.
-  - admit.
-  - inversion Hparamᵂ.
-  Admitted.
-
-(** See parametric modality **)
 
