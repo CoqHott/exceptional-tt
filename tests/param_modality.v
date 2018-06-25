@@ -21,11 +21,10 @@ Effect Translate param_nat.
 Weakly Definition param_nat.
 Proof. intros E n Hn. exact (natᵂ E n). Defined.
 
-Definition param_fun_nat: nat -> (nat -> nat) -> Prop := fun _ _ => True.
+Definition param_fun_nat: (nat -> nat) -> Prop := fun f => forall n, param_nat (f n).
 Effect Translate param_fun_nat.
 (* Proof. intros E n. exact (TypeVal E (Trueᵒ E) (Trueᴱ E)). Defined. *)
-Weakly Definition param_fun_nat.
-Proof. intros E n f Hn. exact (natᵂ E (f n)). Defined.
+Weakly Translate param_fun_nat. Print param_fun_natᵂ.
 
 Effect Definition O_f: 0 = raise nat -> False using unit.
 Proof. simpl. intros H. inversion H. exact (Falseᴱ unit H0). Defined.
@@ -37,7 +36,7 @@ Proof. simpl. intros n H. inversion H. exact (Falseᴱ unit H0). Defined.
 Weakly Definition S_f using unit.
 Proof. simpl. intros n H Hᵂ. inversion Hᵂ. Defined.
 
-Theorem what: forall n f, param_fun_nat n f -> f n = raise nat -> False.
+Theorem what: forall n f, param_fun_nat f -> f n = raise nat -> False.
 Proof. 
   intros n f _ H. destruct (f n).
   - exact (O_f H).
@@ -47,7 +46,9 @@ Effect Translate what using unit.
 Weakly Definition what using unit.
 Proof.
   simpl.
-  intros n f H Hᵂ Heq Heqᵂ. inversion Hᵂ.
+  intros n f H Hᵂ Heq Heqᵂ. unfold param_fun_natᵂ in Hᵂ.
+  assert (Q: param_natᵂ unit (f n) (H n)) by (apply Hᵂ).
+  inversion Q.
   - inversion Heqᵂ. rewrite H2 in H1. inversion H1.
   - inversion Heqᵂ. rewrite H2 in H1. inversion H1.
 Defined.
@@ -70,5 +71,56 @@ Proof.
   - admit.
   - inversion Hparamᵂ.
   Admitted.
+
+
+
+Module ClassParamMod.
+
+Generalizable All Variables.
+
+Class ParamMod (A: Type) := {
+  param: A -> Prop
+}.
+
+Instance NatParamMod: ParamMod nat := {
+  param := fun _ => True
+}.
+(*
+Effect Translate NatParamMod.
+Weakly Definition NatParamMod.
+Proof.
+  intros E.
+  constructor.
+  simpl.
+  intros n _.
+  exact (natᵂ E n).
+Defined.  
+*)
+Instance ProductParamMod {A: Type} {B: A -> Type}
+                        `{forall a, ParamMod (B a)}: ParamMod (forall (a: A), (B a)) := {
+  param := fun f => forall (a: A), param (f a)
+}.
+
+Theorem what: forall (n: nat) (f: nat -> nat), param f -> f n = raise nat -> False.
+Proof. 
+  intros n f _ H. destruct (f n).
+  - exact (O_f H).
+  - exact (S_f n0 H).
+Defined.
+(*
+Effect Translate what using unit.
+Weakly Definition what using unit.
+Proof.
+  simpl.
+  intros n f H Hᵂ Heq Heqᵂ. unfold param_fun_natᵂ in Hᵂ.
+  assert (Q: param_natᵂ unit (f n) (H n)) by (apply Hᵂ).
+  inversion Q.
+  - inversion Heqᵂ. rewrite H2 in H1. inversion H1.
+  - inversion Heqᵂ. rewrite H2 in H1. inversion H1.
+Defined.
+*)
+
+End ClassParamMod.
+
 
 (** See parametric modality **)
