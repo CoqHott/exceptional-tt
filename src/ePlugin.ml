@@ -198,14 +198,32 @@ let ptranslate_constant err translator cst ids =
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (cst, ConstRef cst_)]
 
+let primitives_from_declaration env (ind: Names.mutual_inductive) =
+  let (mind, _) = Inductive.lookup_mind_specif env (ind, 0) in  
+  let (_, projs, _) = Option.get (Option.get mind.mind_record) in
+  Array.to_list projs
+
 let translate_inductive_gen f err translator (ind, _) =
   let env = Global.env () in
   let (mind, _) = Inductive.lookup_mind_specif env (ind, 0) in
+
+  let primitive_records = EUtil.primitive_record mind in 
+
   let mind' = EUtil.process_inductive mind in
   let mind_ = f err translator env ind mind mind' in
   let ((_, kn), _) = Declare.declare_mind mind_ in
   let ind_ = Global.mind_of_delta_kn kn in
-  [ExtInductive (ind, ind_)]
+  let extensions = 
+    if primitive_records then 
+      let env = Global.env () in
+      let proj  = primitives_from_declaration env ind in 
+      let proj_ = primitives_from_declaration env ind_ in 
+      let pair = List.combine proj proj_ in
+      List.map (fun (p, pe) -> ExtConstant (p, ConstRef pe)) pair
+    else
+      []
+  in
+  (ExtInductive (ind, ind_)) :: extensions
 
 let translate_inductive err translator ind =
   translate_inductive_gen ETranslate.translate_inductive err translator ind

@@ -341,7 +341,14 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   let (sigma, recdefe) = otranslate_recdef env sigma recdef in
   let r = mkCoFix (fi, recdefe) in
   (sigma, r)
-| Proj (p, c) -> assert false
+| Proj (p, c) ->
+  let constant = Names.Projection.constant p in 
+  let unfolded = Names.Projection.unfolded p in
+  let _, glob_constante = get_cst env constant in
+  let constante = Globnames.destConstRef glob_constante in
+  let proje = Names.Projection.make constante unfolded in
+  let (sigma, ce) = otranslate env sigma c in
+  (sigma, mkProj (proje, ce))
 | Meta _ -> assert false
 | Evar _ -> assert false
 
@@ -711,7 +718,6 @@ let ptranslate err translator env0 sigma c =
   let (sigma, cr) = optranslate env sigma c in
   let decl = get_pexception env in
   let cr = mkLambda_or_LetIn decl cr in
-  let () = Feedback.msg_notice (Printer.pr_econstr_env env0 sigma cr) in
   let (sigma, _) = Typing.type_of env.penv_src sigma cr in
   (sigma, cr)
 
@@ -842,14 +848,56 @@ let translate_inductive_body env sigma mind0 mind n ind0 ind =
   } in
   (sigma, ind)
 
+let primitive_record mind =
+  match mind.mind_entry_record with
+  | Some (Some _) -> true
+  | _ -> false
+
+let translate_primitive_record env sigma mind_d mind_e =
+  let _, env = extend_inductive env mind_d mind_e in
+  let ind_e = List.hd mind_e.mind_entry_inds in 
+  let ind_d = mind_d.mind_packets.(0) in 
+  let ind_name = translate_internal_name ind_e.mind_entry_typename in
+  let (sigma, sort) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.env_tgt sigma InType in
+  let ar = mkSort sort in
+  let cons_name = translate_name (List.hd ind_e.mind_entry_consnames) in
+  let (sigma, constr_type) = translate_constructors env sigma mind_d mind_e ind_d ind_e in
+  let constr_type = List.hd constr_type in
+  let rec aux sigma te = match EConstr.kind sigma te with
+    | Prod (na, ty, bd) -> 
+       let trans_name = match na with
+         | Anonymous as anon -> anon
+         | Name id -> Name (translate_name id)
+       in
+       let trans_body = aux sigma bd in 
+       mkProd (trans_name, ty, trans_body)
+    | _ -> te
+  in
+  let constr_type_name = aux sigma constr_type in
+  let ind = { ind_e with 
+              mind_entry_typename = ind_name;
+              mind_entry_arity = EConstr.to_constr sigma ar;
+              mind_entry_consnames = [cons_name];
+              mind_entry_lc = [EConstr.to_constr sigma constr_type_name] 
+            }
+  in
+  (sigma, ind)
+
 let translate_inductive err translator env _ mind0 (mind : Entries.mutual_inductive_entry) =
   let sigma = Evd.from_env env in
   let (sigma, env) = make_context err translator env sigma in
   let (sigma, env, _) = otranslate_context env sigma (List.map EConstr.of_rel_decl mind0.mind_params_ctxt) in
-  let inds = List.combine (Array.to_list mind0.mind_packets) mind.mind_entry_inds in
-  let inds = List.mapi (fun i (ind, ind0) -> (i, ind, ind0)) inds in
-  let map sigma (n, ind0, ind) = translate_inductive_body env sigma mind0 mind n ind0 ind in
-  let sigma, inds = List.fold_map map sigma inds in
+  let (sigma, inds) = 
+    if primitive_record mind then 
+       let (sigma, pind) = translate_primitive_record env sigma mind0 mind in
+       (sigma, [pind])
+    else 
+      let inds = List.combine (Array.to_list mind0.mind_packets) mind.mind_entry_inds in
+      let inds = List.mapi (fun i (ind, ind0) -> (i, ind, ind0)) inds in
+      let map sigma (n, ind0, ind) = translate_inductive_body env sigma mind0 mind n ind0 ind in
+      let sigma, inds = List.fold_map map sigma inds in
+      (sigma, inds)
+  in
   let sigma, inds, params = EUtil.retype_inductive env.env_tgt sigma (EConstr.rel_context env.env_tgt) inds in
   let params = List.map to_local_entry params in
   let uctx = UState.context (Evd.evar_universe_context sigma) in
