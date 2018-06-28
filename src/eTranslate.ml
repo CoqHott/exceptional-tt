@@ -968,7 +968,7 @@ let rec split_record_constr sigma term = match EConstr.kind sigma term with
       ty :: split_record_constr sigma bd
   | _ -> []                                                    
 
-let abstract_proj sigma mind n k c =
+let pabstract_proj sigma mind n k c =
   let rec aux k c = match EConstr.kind sigma c with
   | Rel m ->
     if m <= k then c
@@ -980,12 +980,12 @@ let abstract_proj sigma mind n k c =
   in
   aux k c
 
-let ptranslate_primitive_projections env sigma mutind mind_d mind_e ind_e =
+let ptranslate_primitive_projections env sigma mutind ext_mindx mind_d mind_e ind_e =
   let record_constructor = EConstr.of_constr (List.hd ind_e.mind_entry_lc) in
   let projections = split_record_constr sigma record_constructor in
   let nparams = List.length mind_e.mind_entry_params in
-  let mk_ind n = mkInd (mutind, nparams + n) in
-  let subst_ind = List.init nparams (fun i -> mkVar (Names.Id.of_string ("s"^(string_of_int i))))(*mk_ind i*) in  
+  let mk_ind n = mkInd (mutind, 1) in
+  let subst_ind = List.init nparams (fun i -> mk_ind i) in  
   let () = Feedback.msg_info (Pp.str "Now Checking") in
   let map (n, sigma) t =
     let t = Vars.substnl subst_ind (n - 1) t in 
@@ -997,7 +997,7 @@ let ptranslate_primitive_projections env sigma mutind mind_d mind_e ind_e =
   
 
 let ptranslate_primitive_record env sigma mutind mind_d mind_e =
-  let _, env = pextend_inductive env (mutind, 0) mind_d mind_e in
+  let ext_mind, env = pextend_inductive env (mutind, 0) mind_d mind_e in
   let ind_e = List.hd mind_e.mind_entry_inds in 
   let ind_d = mind_d.mind_packets.(0) in 
   let ind_name = ptranslate_internal_name ind_e.mind_entry_typename in
@@ -1008,7 +1008,7 @@ let ptranslate_primitive_record env sigma mutind mind_d mind_e =
   let () = Feedback.msg_info (Pp.str "constructor") in
   let con = (List.hd ind_e.mind_entry_lc) in
   let () = Feedback.msg_info (Printer.pr_constr con) in
-  let _ = ptranslate_primitive_projections env sigma mutind mind_d mind_e ind_e in
+  let _ = ptranslate_primitive_projections env sigma mutind ext_mind mind_d mind_e ind_e in
   let () = assert false in
   (*
   let (sigma, constr_type) = ptranslate_constructors env sigma mutind mind_d mind_e ind_d ind_e in
