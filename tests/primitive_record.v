@@ -16,7 +16,14 @@ Definition tt: sigR _ (fun _ => bool) := {|
   fst := 0 ;
   snd := true
 |}.
+Effect Translate tt.
+Parametricity Translate tt.
 
 Effect Translate tt.
 Definition f := snd nat (fun _ => bool) tt.
 Effect Translate f.
+
+CoInductive stream (A: Type) := Stream {
+  hd: A;
+  tl: stream A
+}. Print stream.  
