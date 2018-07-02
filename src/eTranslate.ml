@@ -1025,18 +1025,21 @@ let ptranslate_primitive_projs env sigma mutind mind_d mind_e ind_e =
   let map (n, sigma, env) t =
     let prev_fields = n - 1 in
     let (sigma, tr) = optranslate_type env sigma t in 
+    let () = Feedback.msg_info (Pp.(str "trans: " ++ Printer.pr_econstr tr)) in
     let tr = Vars.liftn (2*prev_fields + 1) (2*prev_fields + 2) tr in
-    let tr = Vars.subst1 (mk_named_proj projections_name (n - 1) (mkRel (2*n - 1))) tr in
-    let projection_subst current_field record_var n = 
+    let tr = Vars.subst1 (mk_named_proj projections_name (n - 1) (mkRel (4*prev_fields + 1))) tr in
+    let () = Feedback.msg_info (Pp.(str "trans subst: " ++ Printer.pr_econstr tr)) in
+    let projection_subst current_field n = 
       let inverse_field = (n + 1) / 2 in
       if n mod 2 == 0 then
-        mk_named_proj projections_name (current_field - inverse_field - 1) (mkRel record_var)
+        let record_name = inverse_field + 1 in 
+        mk_named_proj projections_name (current_field - record_name) (mkRel (current_field))
       else
         mkRel inverse_field
     in
     let prev_projections = List.init 
                              (2*prev_fields) 
-                             (fun i -> projection_subst n (2*i + 3) (i + 1)) 
+                             (fun i -> projection_subst n (i + 1)) 
     in
     let tr = Vars.substl prev_projections tr in
     let tr = Vars.liftn (- prev_fields) (2*prev_fields + 1) tr in 
@@ -1100,15 +1103,19 @@ let ptranslate_primitive_record env sigma mutind mind_d mind_e =
   in
   let zip_projections = List.combine (Array.to_list record_projs) projections in 
   let record_constructor = List.fold_right constr_builder zip_projections cr in
+  let decl_to_name decl = 
+    let open Context.Rel.Declaration in
+    match (get_name decl) with Anonymous -> Names.Id.of_string "" | Name t -> t
+  in
+  let params_name = List.map decl_to_name (Environ.rel_context env.penv_ptgt) in
+  let fresh_record = Namegen.next_ident_away (Names.Id.of_string "r") params_name in
   let env = {env with penv_ptgt = Environ.push_rel 
-                                    (LocalAssum (Names.Name.mk_name (Names.id_of_string "Fresh"),
+                                    (LocalAssum (Names.Name.mk_name fresh_record,
                                                  EConstr.to_constr sigma ind_))
                                     env.penv_ptgt }
   in
   let record_constructor' = Term.it_mkProd_or_LetIn (EConstr.to_constr sigma record_constructor) (Environ.rel_context env.penv_ptgt) in
   let () = Feedback.msg_info (Pp.str "builder: " ++ Printer.pr_constr record_constructor') in
-  let (sigma,_) = Typing.type_of env.penv_ptgt sigma record_constructor in
-  let () = Feedback.msg_info (Pp.str "builder: " ++ Printer.pr_econstr record_constructor) in
   let ind = { ind_e with 
               mind_entry_typename = ptranslate_name record_name;
               mind_entry_arity = EConstr.to_constr sigma arity;
