@@ -206,9 +206,9 @@ let primitives_from_declaration env (ind: Names.mutual_inductive) =
 
 let translate_inductive_gen f err translator (ind, _) =
   let env = Global.env () in
-  let (mind, _) = Inductive.lookup_mind_specif env (ind, 0) in
+  let (mind, _ as specif) = Inductive.lookup_mind_specif env (ind, 0) in
 
-  let primitive_records = EUtil.primitive_record mind in 
+  let primitive_records = Inductive.is_primitive_record specif in 
 
   let mind' = EUtil.process_inductive mind in
   let mind_ = f err translator env ind mind mind' in
