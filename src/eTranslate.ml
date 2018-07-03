@@ -557,8 +557,6 @@ let rec optranslate env sigma c0 = match EConstr.kind sigma c0 with
       let specif = Inductive.lookup_mind_specif env.penv_ptgt ind in 
       let primitive = Inductive.is_primitive_record specif in 
       let args = Inductive.inductive_params specif in
-      let () = Feedback.msg_info (Pp.str "params ---> " ++ Pp.int args) in
-      let () = Feedback.msg_info (Pp.str "prim ---> " ++ Pp.bool primitive) in
       (primitive, args)
     else
       (false, 0)
@@ -571,13 +569,10 @@ let rec optranslate env sigma c0 = match EConstr.kind sigma c0 with
     let (sigma, tr) = optranslate env sigma t in
     let arg = tr :: accu in 
     let arg = 
-      if primitive then
-        if params < i then 
+      if primitive && params < i then 
           arg
-        else if params == i then 
+      else if primitive &&  params == i then 
           te :: arg
-        else 
-          t_ :: arg 
       else
         t_ :: arg
     in
