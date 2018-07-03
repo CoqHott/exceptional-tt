@@ -552,21 +552,35 @@ let rec optranslate env sigma c0 = match EConstr.kind sigma c0 with
 | App (t, args) ->
   let (sigma, tr) = optranslate env sigma t in
   let (primitive, params) = 
-    if isConstruct sigma tr then
-      let ((ind, c), u) = destConstruct sigma tr in
+    if isConstruct sigma t then
+      let ((ind, c), u) = destConstruct sigma t in
       let specif = Inductive.lookup_mind_specif env.penv_ptgt ind in 
       let primitive = Inductive.is_primitive_record specif in 
       let args = Inductive.inductive_params specif in
+      let () = Feedback.msg_info (Pp.str "params ---> " ++ Pp.int args) in
+      let () = Feedback.msg_info (Pp.str "prim ---> " ++ Pp.bool primitive) in
       (primitive, args)
     else
       (false, 0)
   in
+  let (sigma, te) = 
+    if primitive then otranslate (project env) sigma (mkApp (t, args)) else (sigma, mkRel 0) in
   let fold i t (sigma, accu) =
     let (sigma, t_) = otranslate (project env) sigma t in
     let t_ = plift env t_ in
     let (sigma, tr) = optranslate env sigma t in
     let arg = tr :: accu in 
-    let arg = if primitive && params < i then arg else t_ :: arg in  
+    let arg = 
+      if primitive then
+        if params < i then 
+          arg
+        else if params == i then 
+          te :: arg
+        else 
+          t_ :: arg 
+      else
+        t_ :: arg
+    in
     (sigma, arg)
   in
   let (sigma, argsr) = Array.fold_right_i fold args (sigma, []) in

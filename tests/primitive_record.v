@@ -48,15 +48,16 @@ Record ss (A: Type) (B: A -> Type): Type := sexR {
 Effect Translate ss.
 Parametricity Translate ss. Check sexRᴿ.
 Print sigT.
-Definition gg A := @sigT A.
+Definition gg A := @tsigR A.
 Effect Translate gg. Print ggᵉ.
+Parametricity Translate gg. Print ggᴿ.
 
 Definition tt: ss nat (fun n: nat => bool) := {|
   sfst := 0 ;
   ssnd := true ;
 |}.
-
-Effect Translate tt.
+Print tt.
+Effect Translate tt. Check sexRᴿ.
 Parametricity Translate tt.
 
 (*
