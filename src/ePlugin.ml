@@ -199,6 +199,7 @@ let ptranslate_constant err translator cst ids =
   [ExtConstant (cst, ConstRef cst_)]
 
 let primitives_from_declaration env (ind: Names.mutual_inductive) =
+  let open Declarations in 
   let (mind, _) = Inductive.lookup_mind_specif env (ind, 0) in  
   let (_, projs, _) = Option.get (Option.get mind.mind_record) in
   Array.to_list projs

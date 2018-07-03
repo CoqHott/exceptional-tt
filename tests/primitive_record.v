@@ -4,9 +4,12 @@ Require Import Effects.Effects.
 Effect Translate eq.
 Effect Translate nat.
 Effect Translate bool.
+Effect Translate sigT.
 
 Parametricity Translate eq.
 Parametricity Translate nat.
+Parametricity Translate bool.
+Parametricity Translate sigT.
 
 Effect Translate ex.
 Parametricity Translate ex. Print exᴿ.
@@ -26,15 +29,6 @@ Print tsigR.
 Effect Translate tsigR. Print tsigRᵒ.
 Parametricity Translate tsigR. Print tsigRᴿ.
 
-Definition a (A: Type) (B: A -> Type) (f: A) (snd: B f): snd = snd.
-Proof. reflexivity. Defined.
-Effect Translate a. Print aᵉ.
-Parametricity Translate a. Print aᴿ.
-
-Definition id (A: Type) : A -> A := fun a => a.
-Effect Translate id. Print idᵉ.
-Parametricity Translate id. Print idᴿ.
-
 Set Primitive Projections.
 Record sigR (A: Type) (B: A -> Type): Type := exR {
   zero: A -> Type;
@@ -46,29 +40,44 @@ Record sigR (A: Type) (B: A -> Type): Type := exR {
 Effect Translate sigR. Print sigRᵒ.
 Parametricity Translate sigR. Print sigRᴿ.
 
-Record msigR (E: Type) (A: El Typeᵉ) 
-    (A': El A -> Type) 
-    (B: El A -> El Typeᵉ)
-    (B': forall H: @El E A, A' H -> @El E (B H) ->Type)
-    (r: sigRᵒ E A B) := {
-  mzero: forall H: @El E A, A' H -> @El E (zeroᵉ _ _ _ r H) -> Type;
-  mfst: A' (fstᵉ _ _ _ r);
-  msnd: B' (fstᵉ _ _ _ r) mfst (sndᵉ _ _ _ r);
-  mthd: forall (x: @El E (B (fstᵉ _ _ _ r)))
-               (x': B' (fstᵉ _ _ _ r) mfst x)
-               (a: @El E A)
-               (a': A' a),
-               eqᴿ E (B (fstᵉ _ _ _ r)) (B' (fstᵉ _ _ _ r) mfst)
-                   x x' (sndᵉ _ _ _ r) msnd (thdᵉ _ _ _ r x a);
-  mfth: mzero (fstᵉ _ _ _ r) mfst (fthᵉ _ _ _ r);
+Record ss (A: Type) (B: A -> Type): Type := sexR {
+  sfst: A;
+  ssnd: B sfst;
 }.
 
-Definition tt: sigR _ (fun _ => bool) := {|
-  fst := 0 ;
-  snd := true
+Effect Translate ss.
+Parametricity Translate ss. Check sexRᴿ.
+Print sigT.
+Definition gg A := @sigT A.
+Effect Translate gg. Print ggᵉ.
+
+Definition tt: ss nat (fun n: nat => bool) := {|
+  sfst := 0 ;
+  ssnd := true ;
 |}.
+
 Effect Translate tt.
 Parametricity Translate tt.
+
+(*
+Illegal application: 
+The term "sexRᴿ" of type
+ "forall (E : Type) (A : El Typeᵉ) (Aᴿ : El A -> Type) (B : El A -> El Typeᵉ)
+    (Bᴿ : forall H : El A, Aᴿ H -> El (B H) -> Type) (r : ssᵒ E A B) (sfstᴿ : Aᴿ (sfstᵉ _ _ _ r)),
+  Bᴿ (sfstᵉ _ _ _ r) sfstᴿ (ssndᵉ _ _ _ r) -> ssᴿ E A Aᴿ B Bᴿ r"
+cannot be applied to the terms
+ "E" : "Type"
+ "TypeVal E (natᵒ E) (natᴱ E)" : "type E"
+ "natᴿ E" : "natᵒ E -> Type"
+ "fun _ : natᵒ E => TypeVal E (boolᵒ E) (boolᴱ E)" : "natᵒ E -> type E"
+ "fun (n : natᵒ E) (_ : natᴿ E n) => boolᴿ E" : "forall n : natᵒ E, natᴿ E n -> boolᵒ E -> Type"
+ "Oᵉ E" : "natᵒ E"
+ "Oᴿ E" : "natᴿ E (Oᵉ E)"
+ "trueᵉ E" : "boolᵒ E"
+ "trueᴿ E" : "boolᴿ E (trueᵉ E)"
+The 6th term has type "natᵒ E" which should be coercible to
+ "ssᵒ E (TypeVal E (natᵒ E) (natᴱ E)) (fun _ : natᵒ E => TypeVal E (boolᵒ E) (boolᴱ E))".
+*)
 
 Effect Translate tt.
 Definition f := snd nat (fun _ => bool) tt.
@@ -77,4 +86,4 @@ Effect Translate f.
 CoInductive stream (A: Type) := Stream {
   hd: A;
   tl: stream A
-}. Print stream.  
+}.

@@ -59,9 +59,23 @@ type pcontext = {
   (** ⊢ ⟦Γ⟧ε *)
 }
 
+let translate_name id =
+  let id = Id.to_string id in
+  Id.of_string (id ^ "ᵉ")
+
+let translate_internal_name id =
+  let id = Id.to_string id in
+  Id.of_string (id ^ "ᵒ")
+
+let translate_failure id =
+  let id = Id.to_string id in
+  Id.of_string (id ^ "ᴱ")
+
 let ptranslate_name id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᴿ")
+
+let ptranslate_internal_name = ptranslate_name
 
 let pname = function
 | Anonymous -> Anonymous
@@ -109,7 +123,7 @@ let err_e = ConstRef (Constant.make1 (make_kn "Err"))
 let typeval_e = ConstructRef ((MutInd.make1 (make_kn "type"), 0), 1)
 
 let name_errtype = Id.of_string "E"
-let name_err = Id.of_string "e"
+let name_err = Id.of_string "e"  
 
 (** Handling of globals *) 
 
@@ -248,6 +262,13 @@ let mk_default_ind env sigma (ind, u) =
   let r = mkConstructU ((ind, err), EInstance.make u) in
   let r = if gen then mkApp (r, [|e|]) else r in
   (sigma, r)
+
+let mk_default_primitive_record env sigma (ind, u) =
+  let (modd, dir, lab) = (MutInd.repr3 (fst ind)) in 
+  let cst = Constant.make3 modd dir lab in 
+  let (gen, default) = get_cst env cst in 
+  let (sigma, r) = fresh_global env sigma default in 
+  (sigma, gen, EInstance.kind sigma (snd (destConst sigma r)), r) 
 
 (* From Γ ⊢ M : A produce [M] s.t. ⟦Γ⟧ ⊢ [M] : ⟦A⟧. *)
 let rec otranslate env sigma c = match EConstr.kind sigma c with
@@ -424,7 +445,17 @@ and otranslate_ind env sigma (ind, u) args =
   let (mib, mip) = Inductive.lookup_mind_specif env.env_src ind in
   let fold sigma c = otranslate env sigma c in
   let (sigma, args) = Array.fold_map fold sigma args in
-  if Int.equal (Array.length args) (mib.mind_nparams + mip.mind_nrealargs) then
+  if Inductive.is_primitive_record (mib, mip) then
+    (** Primitive default constructor 
+        This is wrong *)
+    let e_var = mkRel (Environ.nb_rel env.env_tgt) in
+    let (sigma, c) = apply_global env sigma (IndRef ind) in
+    let (sigma, gen, _, def) = mk_default_primitive_record env sigma (ind, u) in
+    let (sigma, typeval) = fresh_global env sigma typeval_e in
+    let r = mkApp (typeval, [| e_var; mkApp (c, args); mkApp (def, args) |]) in
+    let () = assert false in 
+    (sigma, r)
+  else if Int.equal (Array.length args) (mib.mind_nparams + mip.mind_nrealargs) then
     (** Fully applied *)
     let e = mkRel (Environ.nb_rel env.env_tgt) in
     let (sigma, c) = apply_global env sigma (IndRef ind) in
@@ -520,13 +551,25 @@ let rec optranslate env sigma c0 = match EConstr.kind sigma c0 with
   (sigma, r)
 | App (t, args) ->
   let (sigma, tr) = optranslate env sigma t in
-  let fold t (sigma, accu) =
+  let (primitive, params) = 
+    if isConstruct sigma tr then
+      let ((ind, c), u) = destConstruct sigma tr in
+      let specif = Inductive.lookup_mind_specif env.penv_ptgt ind in 
+      let primitive = Inductive.is_primitive_record specif in 
+      let args = Inductive.inductive_params specif in
+      (primitive, args)
+    else
+      (false, 0)
+  in
+  let fold i t (sigma, accu) =
     let (sigma, t_) = otranslate (project env) sigma t in
     let t_ = plift env t_ in
     let (sigma, tr) = optranslate env sigma t in
-    (sigma, t_ :: tr :: accu)
+    let arg = tr :: accu in 
+    let arg = if primitive && params < i then arg else t_ :: arg in  
+    (sigma, arg)
   in
-  let (sigma, argsr) = Array.fold_right fold args (sigma, []) in
+  let (sigma, argsr) = Array.fold_right_i fold args (sigma, []) in
   let r = applist (tr, argsr) in
   (sigma, r)
 | Var id ->
@@ -747,20 +790,6 @@ let ptranslate_type err translator env0 sigma c =
   let (sigma, _) = Typing.type_of nenv sigma cr in
   (sigma, cr)
 
-let translate_name id =
-  let id = Id.to_string id in
-  Id.of_string (id ^ "ᵉ")
-
-let translate_internal_name id =
-  let id = Id.to_string id in
-  Id.of_string (id ^ "ᵒ")
-
-let ptranslate_internal_name = ptranslate_name
-
-let translate_failure id =
-  let id = Id.to_string id in
-  Id.of_string (id ^ "ᴱ")
-
 let to_local_entry = function
 | LocalAssum (Name id, t) -> (id, Entries.LocalAssumEntry t)
 | LocalDef (Name id, b, t) -> (id, Entries.LocalDefEntry b)
@@ -887,7 +916,7 @@ let translate_inductive err translator env _ mind0 (mind : Entries.mutual_induct
   let (sigma, env) = make_context err translator env sigma in
   let (sigma, env, _) = otranslate_context env sigma (List.map EConstr.of_rel_decl mind0.mind_params_ctxt) in
   let (sigma, inds) = 
-    if EUtil.primitive_record mind0 then 
+    if Inductive.is_primitive_record (mind0,mind0.mind_packets.(0)) then 
        let (sigma, pind) = translate_primitive_record env sigma mind0 mind in
        (sigma, [pind])
     else 
@@ -988,7 +1017,6 @@ let ptranslate_inductive_body err env sigma mutind mind0 mind n ind0 ind =
   let self = LocalAssum (Anonymous, ind_) in
   let (sigma, sort) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.penv_ptgt sigma InType in
   let arity = it_mkProd_or_LetIn (mkSort sort) (self :: arity_ctx') in
-  let () = Feedback.msg_info (Pp.int (List.length arity_ctx')) in
   let (sigma, _) = Typing.type_of env.penv_ptgt sigma arity in
   let (sigma, lc) = ptranslate_constructors env sigma (mutind, n) mind0 mind ind0 ind in
   let lc = List.map (fun c -> EConstr.to_constr sigma c) lc in
@@ -1015,20 +1043,16 @@ let ptranslate_primitive_projs env sigma mutind mind_d mind_e ind_e =
   let _,projections_name,_ = Option.get (Option.get mind_d.mind_record) in
   let fold name = 
     let (_,cst) = get_cst (project env) name in
-    let cst = Globnames.destConstRef cst in
-    cst
+    Globnames.destConstRef cst 
   in
   let projections_name = Array.map fold projections_name in
   let buckets = split_record_constr sigma record_constructor in
   let projections_type = List.firstn (Array.length projections_name) buckets in
-  let () = Feedback.msg_info (Pp.str "Now Checking") in
   let map (n, sigma, env) t =
     let prev_fields = n - 1 in
     let (sigma, tr) = optranslate_type env sigma t in 
-    let () = Feedback.msg_info (Pp.(str "trans: " ++ Printer.pr_econstr tr)) in
     let tr = Vars.liftn (2*prev_fields + 1) (2*prev_fields + 2) tr in
     let tr = Vars.subst1 (mk_named_proj projections_name (n - 1) (mkRel (4*prev_fields + 1))) tr in
-    let () = Feedback.msg_info (Pp.(str "trans subst: " ++ Printer.pr_econstr tr)) in
     let projection_subst current_field n = 
       let inverse_field = (n + 1) / 2 in
       if n mod 2 == 0 then
@@ -1043,14 +1067,11 @@ let ptranslate_primitive_projs env sigma mutind mind_d mind_e ind_e =
     in
     let tr = Vars.substl prev_projections tr in
     let tr = Vars.liftn (- prev_fields) (2*prev_fields + 1) tr in 
-    let () = Feedback.msg_info (Pp.(str "trans final: " ++ Printer.pr_econstr tr)) in
-    let () = Feedback.msg_info (Pp.str "--------------------") in
     let nenv = push_passum (Names.Name.mk_name (Names.id_of_string "dummy"))  (t, t, t) env in    
     ((succ n, sigma, nenv), tr)
   in
   let ((_, sigma, env), new_projections) = List.fold_map map (1, sigma, env) projections_type in
-  (sigma, new_projections)
-  
+  (sigma, new_projections)  
 
 let ptranslate_primitive_record env sigma mutind mind_d mind_e =
   let ind_e = List.hd mind_e.mind_entry_inds in 
@@ -1058,7 +1079,6 @@ let ptranslate_primitive_record env sigma mutind mind_d mind_e =
   let record_build = List.hd ind_e.mind_entry_consnames in
   let (_,record_projs,_) = Option.get (Option.get mind_d.mind_record) in
   let record_num_projs = Array.length record_projs in
-
   let gen, ind_ = get_ind (project env) (mutind, 0) in
   let (sigma, (ind_, u)) = Evd.fresh_inductive_instance env.penv_ptgt sigma ind_ in
   let ind_ = mkIndU (ind_, EInstance.make u) in
@@ -1069,13 +1089,10 @@ let ptranslate_primitive_record env sigma mutind mind_d mind_e =
   let (_, args) = List.fold_left make_arg (1, []) mind_d.mind_params_ctxt in
   let args = if gen then mkRel (Environ.nb_rel env.penv_ptgt) :: args else args in
   let ind_ = applist (ind_, args) in
-
   let (sigma, sort) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.penv_ptgt sigma InType in
   let arity = mkSort sort in
   let (sigma, _) = Typing.type_of env.penv_ptgt sigma arity in
-
   let (sigma, projections) = ptranslate_primitive_projs env sigma mutind mind_d mind_e ind_e in
-
   let make_arg (n, accu) decl = 
     let rel = 2 * n + record_num_projs + 1 in
     match decl with 
@@ -1087,18 +1104,13 @@ let ptranslate_primitive_record env sigma mutind mind_d mind_e =
                     (1, [mkRel (record_num_projs + 1)]) 
                     mind_d.mind_params_ctxt 
   in
-  let args = if gen then 
-               mkRel ((Environ.nb_rel env.penv_ptgt) + record_num_projs + 1) :: args 
-             else
-               args
-  in
-  let pind = (Environ.nb_rel env.penv_ptgt) + record_num_projs + 2 in
+  let builder_ctxt = (Environ.nb_rel env.penv_ptgt) + record_num_projs in
+  let args = if gen then mkRel (builder_ctxt + 1) :: args else args in
+  let pind = builder_ctxt + 2 in
   let cr = applist (mkRel pind, args) in
-
   let constr_builder (proj_name, proj_type) partial_record =
     let open Names in 
     let name = ptranslate_name (Label.to_id (Constant.label proj_name)) in
-    let () = Feedback.msg_info (Names.Id.print name ++ Printer.pr_econstr proj_type) in
     mkProd (Name.mk_name name, proj_type, partial_record) 
   in
   let zip_projections = List.combine (Array.to_list record_projs) projections in 
@@ -1109,13 +1121,8 @@ let ptranslate_primitive_record env sigma mutind mind_d mind_e =
   in
   let params_name = List.map decl_to_name (Environ.rel_context env.penv_ptgt) in
   let fresh_record = Namegen.next_ident_away (Names.Id.of_string "r") params_name in
-  let env = {env with penv_ptgt = Environ.push_rel 
-                                    (LocalAssum (Names.Name.mk_name fresh_record,
-                                                 EConstr.to_constr sigma ind_))
-                                    env.penv_ptgt }
-  in
-  let record_constructor' = Term.it_mkProd_or_LetIn (EConstr.to_constr sigma record_constructor) (Environ.rel_context env.penv_ptgt) in
-  let () = Feedback.msg_info (Pp.str "builder: " ++ Printer.pr_constr record_constructor') in
+  let assum = LocalAssum (Names.Name.mk_name fresh_record, EConstr.to_constr sigma ind_) in
+  let env = {env with penv_ptgt = Environ.push_rel assum env.penv_ptgt } in
   let ind = { ind_e with 
               mind_entry_typename = ptranslate_name record_name;
               mind_entry_arity = EConstr.to_constr sigma arity;
@@ -1130,7 +1137,7 @@ let ptranslate_inductive err translator env mutind mind0 (mind : Entries.mutual_
   let (sigma, env) = make_pcontext err translator env sigma in
   let (sigma, env, _) = optranslate_context env sigma (List.map EConstr.of_rel_decl mind0.mind_params_ctxt) in
   let (sigma, env, inds) = 
-    if EUtil.primitive_record mind0 then 
+    if Inductive.is_primitive_record (mind0,mind0.mind_packets.(0)) then 
       let (sigma, env, pind) = ptranslate_primitive_record env sigma mutind mind0 mind in
       (sigma, env, [pind])
     else 
@@ -1143,7 +1150,6 @@ let ptranslate_inductive err translator env mutind mind0 (mind : Entries.mutual_
       let sigma, inds = List.fold_map map sigma inds in
       (sigma, env, inds)
   in
-  let () = Feedback.msg_info (Pp.str "pre retype") in
   let sigma, inds, params = EUtil.retype_inductive env.penv_ptgt sigma (EConstr.rel_context env.penv_ptgt) inds in
   let params = List.map to_local_entry params in
   let uctx = UState.context (Evd.evar_universe_context sigma) in
