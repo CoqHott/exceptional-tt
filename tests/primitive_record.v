@@ -1,13 +1,9 @@
 
-Require Import Effects.Effects.
+Require Import Weakly.Effects.
 
-Effect Translate eq.
-Effect Translate nat.
-Effect Translate bool.
-
-Parametricity Translate eq.
-Parametricity Translate nat.
-Parametricity Translate bool.
+Effect List Translate eq nat bool.
+Parametricity List Translate eq nat bool.
+Weakly List Translate eq nat bool.
 
 Set Primitive Projections.
 Record recordTest (A: Type) (B: A -> Type): Type := recordTestB {
@@ -17,9 +13,10 @@ Record recordTest (A: Type) (B: A -> Type): Type := recordTestB {
   c4: forall (x: B c2), A -> x = c3;
   c5: c1 c2;
 }.
-Unset Primitive Projections.
+
 Effect Translate recordTest.
 Parametricity Translate recordTest.
+Weakly Translate recordTest.
 
 Record sigR (A: Type) (B: A -> Type): Type := exR {
   fst: A;
@@ -27,7 +24,8 @@ Record sigR (A: Type) (B: A -> Type): Type := exR {
 }.
 Effect Translate sigR.
 Parametricity Translate sigR.
-
+Weakly Translate sigR.
+Unset Primitive Projections.
 (** Primitive record on body no handled yet.
     Fail to find default exceptional for primitive record *)
 Definition fail_1 A B := sigR A B.
@@ -42,6 +40,7 @@ Fail Effect Translate fail_3.
 Definition primitive_id: sigR nat (fun n: nat => bool) -> sigR nat (fun n: nat => bool) := fun a => a.
 Effect Translate primitive_id.
 Parametricity Translate primitive_id.
+Weakly Translate primitive_id.
 
 Definition test: sigR nat (fun n: nat => bool) := {|
   fst := 0 ;
@@ -49,7 +48,9 @@ Definition test: sigR nat (fun n: nat => bool) := {|
 |}.
 Effect Translate test.
 Parametricity Translate test.
+Weakly Translate test.
 
 Definition app_test := primitive_id test.
 Effect Translate app_test.
 Parametricity Translate app_test.
+Weakly Translate app_test.

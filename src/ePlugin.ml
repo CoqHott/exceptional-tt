@@ -462,9 +462,6 @@ let wimplement ?exn gr =
   let () = Lemmas.start_proof_univs idr kind sigma typ hook in
   ()
 
-
-let g (i:Libnames.reference) (g: int) = g
-
 (** List translate *)
 
 module Generic = struct
