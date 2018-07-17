@@ -1,3 +1,4 @@
+
 Declare ML Module "exception".
 
 Set Universe Polymorphism.
@@ -43,6 +44,16 @@ match A with
 | pTypeVal _ A _ => A
 | pTypeErr _ e => True
 end.
+
+Monomorphic Class ParamMod (A: Type) := {
+  param: A -> Prop
+}.
+
+Monomorphic Instance ProductParamMod {A: Type} {B: A -> Type} 
+                                    `{forall a, ParamMod (B a)}:
+                         ParamMod (forall (a: A), (B a)) := {
+  param := fun f => forall (a: A), param (f a)
+}.
 
 (******************************)
 (*** Test handling of sorts ***)

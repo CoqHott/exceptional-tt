@@ -408,9 +408,42 @@ let wtranslate_constant err translator cst ids =
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (cst, ConstRef cst_)]
 
+let instantiate_parametric_modality ind =
+  let open Declarations in 
+  let env = Global.env () in
+  let mutind, pind = Inductive.lookup_mind_specif env ind in
+  let base_label = Label.to_string (MutInd.label (fst ind)) in
+  let instance_name = Id.of_string (base_label ^ "_instance") in 
+  let () = Feedback.msg_info (Id.print instance_name) in
+  let empty_ctx = Univ.ContextSet.empty in
+  let nparams = mutind.mind_nparams in 
+  let instance_body =
+    let open Term in
+    let full_args = (nparams + pind.mind_nrealdecls) in
+    let () = Feedback.msg_info (Pp.str "Full args: " ++ Pp.int full_args) in
+    let map decl =
+      let open Context.Rel.Declaration in 
+      match decl with
+      | LocalAssum _ -> true
+      | LocalDef _ -> false
+    in
+    let args_type = List.map map pind.mind_arity_ctxt in
+    let args_rel = List.init (List.length pind.mind_arity_ctxt) (fun i -> mkRel (i+1)) in 
+    let args = List.filter_with args_type args_rel in 
+    let ind_body = applist (mkInd ind, List.rev args) in
+    let part_body = ind_body in
+    let fold accu decl = mkProd_wo_LetIn decl accu in 
+    let f = List.fold_left fold part_body pind.mind_arity_ctxt in
+    let () = Feedback.msg_info (Printer.pr_constr f) in
+    ()
+  in
+  (*let def_entr = Declare.declare_definition instance_name (instance_body, empty_ctx) in *)
+  ()
+    
 let wtranslate_inductive err translator ind =
+  let _ = instantiate_parametric_modality ind in 
   translate_inductive_gen ETranslate.wtranslate_inductive err translator ind
-
+                          
 let wtranslate ?exn ?names gr =
   let ids = names in
   let err = Option.map Nametab.global exn in

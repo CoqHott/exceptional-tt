@@ -11,6 +11,8 @@
 *.cmxs
 *.o
 *.cmi
+*.cmt
+*.cmti
 *.cma
 *.cmxa
 *.d

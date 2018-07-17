@@ -124,6 +124,11 @@ let prod_e = ConstRef (Constant.make1 (make_kn "Prodᵉ"))
 let err_e = ConstRef (Constant.make1 (make_kn "Err"))
 let typeval_e = ConstructRef ((MutInd.make1 (make_kn "type"), 0), 1)
 
+let param_modality =
+  let ind = MutInd.make1 (make_kn "ParamMod") in
+  IndRef (ind, 0)
+
+
 let name_errtype = Id.of_string "E"
 let name_err = Id.of_string "e"  
 
