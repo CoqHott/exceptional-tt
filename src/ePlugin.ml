@@ -408,12 +408,41 @@ let wtranslate_constant err translator cst ids =
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (cst, ConstRef cst_)]
 
-let instantiate_parametric_modality ind =
+let param_ind env mutind =
+  let open Entries in 
+  let param_name = Id.of_string ("param_ind_") in 
+  let entr = EUtil.process_inductive mutind in
+
+  let record = None in
+  let finite = Finite in
+  let filter (_,d) =
+    match d with
+    | Entries.LocalDefEntry _ -> false
+    | Entries.LocalAssumEntry _ -> true
+  in
+  let params = List.filter filter entr.mind_entry_params in
+  let universes = 
+  let entry = { entr with
+      mind_entry_record = record;
+      mind_entry_finite = finite;
+      mind_entry_params = params;
+    }
+  in
+  ()
+    
+let instantiate_parametric_modality (name, n as ind) extension =
   let open Declarations in 
   let env = Global.env () in
+  let map ext =
+    match ext with
+    | ExtConstant _ -> None
+    | ExtInductive (ind_name, ext_name) ->
+       if MutInd.equal ind_name name then Some ext_name else None
+  in
   let mutind, pind = Inductive.lookup_mind_specif env ind in
+  let _ = param_ind env mutind in
   let base_label = Label.to_string (MutInd.label (fst ind)) in
-  let instance_name = Id.of_string (base_label ^ "_instance") in 
+  let instance_name = Id.of_string ("param_" ^ base_label ) in 
   let () = Feedback.msg_info (Id.print instance_name) in
   let empty_ctx = Univ.ContextSet.empty in
   let nparams = mutind.mind_nparams in 
@@ -432,8 +461,9 @@ let instantiate_parametric_modality ind =
     let args = List.filter_with args_type args_rel in 
     let ind_body = applist (mkInd ind, List.rev args) in
     let part_body = ind_body in
-    let fold accu decl = mkProd_wo_LetIn decl accu in 
-    let f = List.fold_left fold part_body pind.mind_arity_ctxt in
+    let prop = mkRel 0 in
+    let lambda = mkLambda (Name.Anonymous, part_body, prop) in
+    let f = it_mkLambda_or_LetIn lambda pind.mind_arity_ctxt in
     let () = Feedback.msg_info (Printer.pr_constr f) in
     ()
   in
@@ -441,8 +471,9 @@ let instantiate_parametric_modality ind =
   ()
     
 let wtranslate_inductive err translator ind =
-  let _ = instantiate_parametric_modality ind in 
-  translate_inductive_gen ETranslate.wtranslate_inductive err translator ind
+  let ext = translate_inductive_gen ETranslate.wtranslate_inductive err translator ind in 
+  let _ = instantiate_parametric_modality ind ext in
+  ext
                           
 let wtranslate ?exn ?names gr =
   let ids = names in

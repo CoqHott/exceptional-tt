@@ -6,7 +6,7 @@ Inductive p (A: Type) (E:=unit): nat -> E -> Type :=.
 
 Effect List Translate nat unit p eq True False eq_ind False_ind le lt.
 Parametricity List Translate nat unit p.
-Weakly List Translate nat unit p eq True False eq_ind False_ind le lt.
+Weakly List Translate nat unit (*p*) eq True False eq_ind False_ind le lt.
 
 Effect Definition raise: forall A, A using unit.
 Proof. exact (fun A => Err A tt). Defined.
