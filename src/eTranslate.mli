@@ -54,3 +54,7 @@ val wtranslate_type :
 val wtranslate_inductive :
   effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
+
+val param_block :
+  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
+  Entries.mutual_inductive_entry -> unit(*Entries.mutual_inductive_entry*)

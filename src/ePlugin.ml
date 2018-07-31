@@ -411,18 +411,19 @@ let wtranslate_constant err translator cst ids =
 let param_ind env mutind =
   let open Entries in 
   let param_name = Id.of_string ("param_ind_") in 
-  let entr = EUtil.process_inductive mutind in
-
+  let entry = EUtil.process_inductive mutind in
   let record = None in
   let finite = Finite in
   let filter (_,d) =
     match d with
     | Entries.LocalDefEntry _ -> false
-    | Entries.LocalAssumEntry _ -> true
+    | Entries.LocalAssumEntry constr ->
+       
+       true
   in
-  let params = List.filter filter entr.mind_entry_params in
-  let universes = 
-  let entry = { entr with
+  let params = List.filter filter entry.mind_entry_params in
+  let kk = List.hd params in 
+  let entry = { entry with
       mind_entry_record = record;
       mind_entry_finite = finite;
       mind_entry_params = params;
@@ -430,21 +431,32 @@ let param_ind env mutind =
   in
   ()
     
-let instantiate_parametric_modality (name, n as ind) extension =
+let instantiate_parametric_modality err translator (name, n)  =
   let open Declarations in 
   let env = Global.env () in
-  let map ext =
-    match ext with
-    | ExtConstant _ -> None
-    | ExtInductive (ind_name, ext_name) ->
-       if MutInd.equal ind_name name then Some ext_name else None
+  let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
+
+  let mind' = EUtil.process_inductive mind in
+  let mind_ = ETranslate.param_block err translator env name mind mind' in
+  (*
+  let ((_, kn), _) = Declare.declare_mind mind_ in
+  let ind_ = Global.mind_of_delta_kn kn in
+  let extensions = 
+    if primitive_records then 
+      let env = Global.env () in
+      let proj  = primitives_from_declaration env ind in 
+      let proj_ = primitives_from_declaration env ind_ in 
+      let pair = List.combine proj proj_ in
+      List.map (fun (p, pe) -> ExtConstant (p, ConstRef pe)) pair
+    else
+      []
   in
-  let mutind, pind = Inductive.lookup_mind_specif env ind in
-  let _ = param_ind env mutind in
+   *)
+  ()
+  (*
   let base_label = Label.to_string (MutInd.label (fst ind)) in
   let instance_name = Id.of_string ("param_" ^ base_label ) in 
   let () = Feedback.msg_info (Id.print instance_name) in
-  let empty_ctx = Univ.ContextSet.empty in
   let nparams = mutind.mind_nparams in 
   let instance_body =
     let open Term in
@@ -469,10 +481,11 @@ let instantiate_parametric_modality (name, n as ind) extension =
   in
   (*let def_entr = Declare.declare_definition instance_name (instance_body, empty_ctx) in *)
   ()
+  *)
     
 let wtranslate_inductive err translator ind =
   let ext = translate_inductive_gen ETranslate.wtranslate_inductive err translator ind in 
-  let _ = instantiate_parametric_modality ind ext in
+  let _ = instantiate_parametric_modality err translator ind in
   ext
                           
 let wtranslate ?exn ?names gr =

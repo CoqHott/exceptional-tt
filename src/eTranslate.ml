@@ -1792,6 +1792,103 @@ let wtranslate_primitive_record env sigma mutind mind_d mind_e =
   in
   (sigma, env, ind)
 
+let param_constr err env sigma (gen,ind_trans,params) mind_d mind_e one_d one_e =
+  let make_arg (n, accu) = function
+    | LocalAssum _ -> (succ n, mkRel n :: accu)
+    | LocalDef _ -> (succ n, accu)
+  in
+  let map sigma (m, cons) =
+    let () = Feedback.msg_info (Pp.str "+++++++++++++++") in 
+    let () = Feedback.msg_info (Printer.pr_constr cons) in 
+    let cons = EConstr.of_constr cons in
+    let cons_ctxt, _ = decompose_prod_assum sigma cons in
+    let () = Feedback.msg_info (Pp.int (List.length cons_ctxt)) in
+    let (sigma, _, cons_trans) = otranslate_context env sigma cons_ctxt in
+    let _,cons_args = List.fold_left make_arg (1,[]) cons_trans in
+    let e = Environ.nb_rel env.env_tgt + List.length cons_trans in
+    let cons_args = if gen then mkRel e :: cons_args else cons_args in
+    let fold ty sigma =
+      let (sigma, t) = Evarutil.new_evar env.env_tgt sigma ty in
+      (t, sigma)
+    in
+    let (evar_list, sigma) = List.fold_map' fold params sigma in
+    (** FIX: wrong index for blocks with >1 inds *)
+    let cons_app = mkRel (e + 1) in
+    let n_cons_ind_trans = (ind_trans, m) in
+    let (sigma, (n_cons_ind, u)) = Evd.fresh_constructor_instance env.env_tgt sigma n_cons_ind_trans in
+    let n_cons_ind = mkConstructU (n_cons_ind, EInstance.make u) in 
+    let cons = applist (n_cons_ind, cons_args) in
+    let () = Feedback.msg_info (Printer.pr_econstr cons) in
+    let cons_term = applist (cons_app, evar_list @ [cons]) in
+    let cons_term = it_mkProd_or_LetIn cons_term cons_trans in 
+    let () = Feedback.msg_info (Printer.pr_econstr cons_term) in
+    (sigma, cons_term)
+  in
+  let constructors = (List.mapi (fun i d -> (i+1,d)) one_e.mind_entry_lc) in
+  let (sigma, lc) = List.fold_map map sigma constructors in 
+  (sigma, lc)
+    
+let param_ind err env sigma (block, n as ind) mind_d mind_e one_d one_e =
+  let mind_arity_ctxt = List.map EConstr.of_rel_decl one_d.mind_arity_ctxt in
+  let nindices = List.length one_d.mind_arity_ctxt - List.length mind_d.mind_params_ctxt in
+  let index_ctxt, _ =  List.chop nindices mind_arity_ctxt in
+  let (sigma, arity_env, arity_ctx') = otranslate_context env sigma index_ctxt in
+  let gen, ind_trans = get_ind env ind in
+  let (sigma, (ind_, u)) = Evd.fresh_inductive_instance env.env_tgt sigma ind_trans in
+  let ind_ = mkIndU (ind_, EInstance.make u) in
+  let make_arg (n, accu) = function
+    | LocalAssum _ -> (succ n, mkRel n :: accu)
+    | LocalDef _ -> (succ n, accu)
+  in
+  let (_, args) = List.fold_left make_arg (1,[]) mind_arity_ctxt  in
+  let args = if gen then mkRel (Environ.nb_rel arity_env.env_tgt) :: args else args in
+  let ind_ = applist (ind_, args) in
+  let self = LocalAssum (Anonymous, ind_) in
+  let (sigma, sort) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.env_tgt sigma InType in
+  let arity = it_mkProd_or_LetIn (mkSort sort) (self :: arity_ctx') in
+  let (sigma, _) = Typing.type_of env.env_tgt sigma arity in
+
+  let (sigma, lc) = param_constr err env sigma (gen, ind_trans, args) mind_d mind_e one_d one_e in
+  let lc = List.map (fun c -> EConstr.to_constr sigma c) lc in
+  let () = Feedback.msg_info (Pp.prlist Printer.pr_constr lc) in
+
+  let ind = { one_e with
+    mind_entry_typename = Names.Id.of_string "asd" (*typename*);
+    mind_entry_arity = EConstr.to_constr sigma arity;
+    mind_entry_consnames = [](*constructors*);
+    (*mind_entry_lc = lc;*)
+  } in
+
+  (sigma, ind)
+  
+    
+let param_block err translator env block mind_d mind_e =
+  let sigma = Evd.from_env env in
+  let (sigma, env) = make_context err translator env sigma in
+  let param_name = Id.of_string ("param_ind_") in 
+  let record = None in
+  let finite = Decl_kinds.Finite in
+
+  let of_rel_decl_param_ctxt = List.map EConstr.of_rel_decl mind_d.mind_params_ctxt in
+  let (sigma, env, _) = otranslate_context env sigma of_rel_decl_param_ctxt in
+
+  let map sigma (n, ind_d, ind_e) =
+    param_ind err env sigma (block, n) mind_d mind_e ind_d ind_e
+  in
+  let inds = List.combine (Array.to_list mind_d.mind_packets) mind_e.mind_entry_inds in
+  let inds = List.mapi (fun i (l,r) -> (i,l,r)) inds in 
+  let (sigma, param_inds) = List.fold_map map sigma inds in   
+  (*
+  let entry = { mind_e with
+      mind_entry_record = record;
+      mind_entry_finite = finite;
+      mind_entry_params = params;
+    }
+  in
+   *)
+  ()
+
+    
 let wtranslate_inductive err translator env mutind mind_d (mind_e : Entries.mutual_inductive_entry) =
   let sigma = Evd.from_env env in
   let weakly_arities = Array.map one_ind_in_prop mind_d.mind_packets in
