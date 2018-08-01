@@ -1848,15 +1848,21 @@ let param_ind err env sigma (block, n as ind) mind_d mind_e one_d one_e =
   let arity = it_mkProd_or_LetIn (mkSort sort) (self :: arity_ctx') in
   let (sigma, _) = Typing.type_of env.env_tgt sigma arity in
 
+  let cons_names name =
+    let open Names in
+    Id.of_string ("param_" ^ (Id.to_string name))
+  in
+  let consnames = List.map cons_names one_e.mind_entry_consnames in 
+  
   let (sigma, lc) = param_constr err env sigma (gen, ind_trans, args) mind_d mind_e one_d one_e in
   let lc = List.map (fun c -> EConstr.to_constr sigma c) lc in
   let () = Feedback.msg_info (Pp.prlist Printer.pr_constr lc) in
-
+  
   let ind = { one_e with
     mind_entry_typename = Names.Id.of_string "asd" (*typename*);
     mind_entry_arity = EConstr.to_constr sigma arity;
-    mind_entry_consnames = [](*constructors*);
-    (*mind_entry_lc = lc;*)
+    mind_entry_consnames = consnames;
+    mind_entry_lc = lc;
   } in
 
   (sigma, ind)
@@ -1877,16 +1883,17 @@ let param_block err translator env block mind_d mind_e =
   in
   let inds = List.combine (Array.to_list mind_d.mind_packets) mind_e.mind_entry_inds in
   let inds = List.mapi (fun i (l,r) -> (i,l,r)) inds in 
-  let (sigma, param_inds) = List.fold_map map sigma inds in   
-  (*
+  let (sigma, param_inds) = List.fold_map map sigma inds in
+
+
+  
   let entry = { mind_e with
       mind_entry_record = record;
       mind_entry_finite = finite;
-      mind_entry_params = params;
+      mind_entry_inds = param_inds;
     }
   in
-   *)
-  ()
+  entry
 
     
 let wtranslate_inductive err translator env mutind mind_d (mind_e : Entries.mutual_inductive_entry) =
