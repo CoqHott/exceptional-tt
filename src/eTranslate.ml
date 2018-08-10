@@ -1794,44 +1794,79 @@ let wtranslate_primitive_record env sigma mutind mind_d mind_e =
   in
   (sigma, env, ind)
 
+let concretize_mind sigma env ind nparams ntypes constructor  = 
+  let sigma = ref sigma in 
+  let rec aux k c = match EConstr.kind !sigma c with
+    | Rel m when m > k -> 
+       let (evar, (ind_, u)) = Evd.fresh_inductive_instance env !sigma (ind, ntypes - (m - k)) in
+       sigma := evar;
+       mkIndU (ind_, EInstance.make u)
+    | _ ->
+       map_with_binders !sigma succ aux k c
+  in
+  let constructor = aux nparams constructor in
+  (!sigma, constructor)
+
 let param_constr err env sigma gen ind ind_trans mind_d mind_e one_d one_e =
   let make_arg (n, accu) = function
     | LocalAssum _ -> (succ n, mkRel n :: accu)
     | LocalDef _ -> (succ n, accu)
   in
   let map sigma (m, cons) =
-    let () = Feedback.msg_info (Pp.str "+++++++++++++++") in 
-    let () = Feedback.msg_info (Printer.pr_constr cons) in 
     let cons = EConstr.of_constr cons in
-    let cons_ctxt, _ = decompose_prod_assum sigma cons in
-    let () = Feedback.msg_info (Pp.int (List.length cons_ctxt)) in
-    let (sigma, _, cons_trans) = otranslate_context env sigma cons_ctxt in
-    let _,cons_args = List.fold_left make_arg (1,[]) cons_trans in
-    let e = Environ.nb_rel env.env_tgt + List.length cons_trans in
-    let cons_args = if gen then mkRel e :: cons_args else cons_args in
+    let nparams = List.length mind_d.mind_params_ctxt in
+    let ntypes = mind_d.mind_ntypes in 
+    let (sigma,cons) = concretize_mind sigma env.env_src (fst ind) nparams ntypes cons in
+    let cons_ctxt, cons = decompose_prod_assum sigma cons in
+    let (sigma, nenv, cons_trans_ctxt) = otranslate_context env sigma cons_ctxt in
+    let _,cons_args = List.fold_left make_arg (1,[]) cons_trans_ctxt in
+    let e = Environ.nb_rel env.env_tgt + List.length cons_trans_ctxt in
+    let length_cons_args_ctxt = List.length cons_trans_ctxt in 
+    let var = nparams + length_cons_args_ctxt in 
+    let cons_param_args = List.init nparams (fun i -> mkRel (var - i)) in 
+    let cons_args = cons_param_args @ cons_args in
+    let gen_exc = gen in
+    (** This generic clause is for the weakly, it should be checked the inner (or received) *)
+    let cons_args = if gen_exc then mkRel e :: cons_args else cons_args in
     let n_cons_ind_trans = (ind_trans, m) in
     let (sigma, (n_cons_ind, u)) = Evd.fresh_constructor_instance env.env_tgt sigma n_cons_ind_trans in
     let n_cons_ind = mkConstructU (n_cons_ind, EInstance.make u) in 
-    let cons = applist (n_cons_ind, cons_args) in
-    let () = Feedback.msg_info (Printer.pr_econstr cons) in
-    let () = Feedback.msg_info (Pp.str "----") in
-    let fold decl sigma =
+    let cons_exc = applist (n_cons_ind, cons_args) in
+
+    let _,cons_args = EConstr.destApp sigma cons in
+    let cons_args = Array.to_list cons_args in 
+    let cons_args = if gen_exc then List.tl cons_args else cons_args in
+    let (sigma, cons_args_trans) = List.fold_map (fun s t -> otranslate env s t) sigma cons_args in 
+    let cons_args_trans = if gen then mkRel e :: cons_args_trans else cons_args_trans in 
+    
+    let cons_app = mkRel (e + 1) in
+    let cons_term = applist (cons_app, cons_args_trans) in
+    let cons_term = it_mkProd_or_LetIn cons_term cons_trans_ctxt in
+
+
+    let fold sigma decl =
       match decl with
       | LocalAssum (_,types) ->
-         let (sigma, c) = (Evarutil.new_evar env.env_tgt sigma types) in
-         let () = Feedback.msg_info (Printer.pr_econstr c) in
-         (Some c, sigma)
-      | _ -> (None, sigma)
+         let types = Vars.lift (List.length cons_ctxt) types in
+         let () = Feedback.msg_info (Pp.str "---->: " ++ Printer.pr_econstr types) in
+         let tgt = EConstr.push_rel_context cons_ctxt env.env_tgt in
+         let (sigma, c) = (Evarutil.new_evar tgt sigma types) in
+         let () = Feedback.msg_info (Pp.str "<----: " ++ Printer.pr_econstr c) in
+         (sigma, Some c)
+      | _ -> (sigma, None)
     in
+    
+    
+
+
+
     let mind_arity_ctxt = List.map EConstr.of_rel_decl one_d.mind_arity_ctxt in
     let nindices = List.length one_d.mind_arity_ctxt - List.length mind_d.mind_params_ctxt in
-    let _, params =  List.chop nindices mind_arity_ctxt in
-    let (sigma, _, params) = otranslate_context env sigma params in
-    let (evar_list, sigma) = List.fold_map' fold params sigma in
+    let _, evar_params =  List.chop nindices mind_arity_ctxt in
+    let (sigma, _, evar_params) = otranslate_context env sigma evar_params in
+    let (sigma, evar_list) = List.fold_map fold sigma (evar_params @ evar_arity) in
     let evar_list = List.map_filter (fun i -> i) evar_list in
-    (* let (evar_list, sigma) = List.fold_map' fold params sigma in
-    let evar_list = List.map_filter (fun i -> i) evar_list in *)
-    let () = Feedback.msg_info (Pp.str "----") in
+    let evar_list = if ind_gen then List.tl cons_args else cons_args in
     let params = if gen then mkRel e :: evar_list else evar_list in
     (** FIX: wrong index for blocks with >1 inds *)
     let cons_app = mkRel (e + 1) in
@@ -1840,11 +1875,7 @@ let param_constr err env sigma gen ind ind_trans mind_d mind_e one_d one_e =
     let () = Feedback.msg_info (Printer.pr_econstr cons_term) in
     (sigma, cons_term)
   in
-  let mapi i constructor =
-    let ind = 
-    (i + 1, constructor)
-  in
-  let constructors = (List.mapi mapi one_e.mind_entry_lc) in
+  let constructors = (List.mapi (fun i c -> (i+1,c)) one_e.mind_entry_lc) in
   let (sigma, lc) = List.fold_map map sigma constructors in
   let () = Feedback.msg_info (Pp.str "********") in
   (sigma, lc)
@@ -1903,9 +1934,11 @@ let param_block err translator env block mind_d mind_e =
   let map sigma (n, ind_d, ind_e) =
     param_ind err env sigma (block, n) mind_d mind_e ind_d ind_e
   in
+  let () = Feedback.msg_info (Pp.str "In param block previous of induction") in 
   let (sigma, param_inds) = List.fold_map map sigma inds in
 
   let wenv_context = EConstr.rel_context env.env_tgt in
+  let () = Feedback.msg_info (Pp.str "In param block previous eUtil") in 
   let sigma, inds, params = EUtil.retype_inductive env.env_tgt sigma wenv_context param_inds in
   let params = List.map to_local_entry params in
   

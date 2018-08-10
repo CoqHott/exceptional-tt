@@ -1,14 +1,37 @@
 
 Require Import Weakly.Effects.
 
-Inductive p (A: Type) (E:=unit): nat -> E -> Type :=.
+Inductive p : nat -> Type := d: p 0.
 
-Effect List Translate nat unit p eq True False eq_ind False_ind le lt.
-Parametricity List Translate nat unit p.
+Inductive k: Type -> nat -> Type := kk: k bool 0.
+
+Effect List Translate nat unit list p k eq True False eq_ind False_ind le lt. Print natᵒ.
+Parametricity List Translate nat unit p k eq True. Print eqᴿ. Print kᴿ.
+
+
+(* ᵒ ᵉ ᴱ ᴿ *)
+Check @eq_refl.
+
+
+Inductive param_eq (E: Type) (A: @El E Typeᵉ) (x: @El E A): 
+                   forall (H:@El E A), eqᵒ E A x H -> Type :=
+param_eq_refl: param_eq _ _ _ _ (eq_reflᵉ E A x). Print param_eq.
+
+Weakly List Translate nat.
+Weakly List Translate unit.
+Weakly List Translate list.
+Weakly List Translate p.
+Weakly List Translate eq.
+Weakly List Translate True.
+Weakly List Translate False.
+Weakly List Translate eq_ind.
+Weakly List Translate False_ind.
+Weakly List Translate le.
+Weakly List Translate lt.
 
 
 
-Weakly List Translate nat unit (*p*) eq True False eq_ind False_ind le lt.
+
 
 Effect Definition raise: forall A, A using unit.
 Proof. exact (fun A => Err A tt). Defined.

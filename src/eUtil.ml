@@ -140,10 +140,13 @@ let retype_inductive env sigma params inds =
   let env = EConstr.push_rel_context params env in
   let fold sigma ind =
     let fold sigma c =
+      let () = Feedback.msg_info (Printer.pr_constr c) in      
       let (sigma, _) = Typing.type_of env sigma (EConstr.of_constr c) in
       sigma
     in
+    let () = Feedback.msg_info (Pp.str "in eUtil") in
     let sigma = List.fold_left fold sigma ind.mind_entry_lc in
+    let () = Feedback.msg_info (Pp.str "post eUtil") in
     (sigma, ind.mind_entry_lc)
   in
   let sigma, constructors = List.fold_map fold sigma inds in
