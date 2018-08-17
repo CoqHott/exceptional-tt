@@ -1,27 +1,36 @@
 
 Require Import Weakly.Effects.
 
-Inductive p : nat -> Type := d: p 0.
+Inductive p : nat -> Type := d: p 0 | l: p 1 -> p 2.
 
-Inductive k: Type -> nat -> Type := kk: k bool 0.
+Inductive k (E: Type): Type -> nat -> Type := kk: k E bool 0. Check kk unit.
 
-Effect List Translate nat unit list p k eq True False eq_ind False_ind le lt. Print natᵒ.
-Parametricity List Translate nat unit p k eq True. Print eqᴿ. Print kᴿ.
+Inductive even: nat -> Type :=
+| evenZ: even 0
+| evenS: forall n, odd n -> even (S n)
+with
+odd: nat -> Type :=
+| oddS: forall n, even n -> odd (S n).
 
+Effect List Translate nat bool unit list p k eq True False eq_ind False_ind le lt even.
+Parametricity List Translate nat bool unit p k eq True. Print eqᴿ. Print kᴿ.
 
 (* ᵒ ᵉ ᴱ ᴿ *)
 Check @eq_refl.
 
+Print eqᵒ. Print eqᴿ.
 
-Inductive param_eq (E: Type) (A: @El E Typeᵉ) (x: @El E A): 
+Inductive param_eq' (E: Type) (A: @El E Typeᵉ) (x: @El E A): 
                    forall (H:@El E A), eqᵒ E A x H -> Type :=
-param_eq_refl: param_eq _ _ _ _ (eq_reflᵉ E A x). Print param_eq.
+param_eq_refl': param_eq' _ _ _ _ (eq_reflᵉ E A x). Print param_eq'.
 
 Weakly List Translate nat.
+Weakly List Translate even.
 Weakly List Translate unit.
-Weakly List Translate list.
+Weakly List Translate list. 
+
 Weakly List Translate p.
-Weakly List Translate eq.
+Weakly List Translate eq. Print param_ind_nat.
 Weakly List Translate True.
 Weakly List Translate False.
 Weakly List Translate eq_ind.

@@ -22,6 +22,10 @@ let wtranslate_name id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᵂ")
 
+let translate_param_name id =
+  let id = Id.to_string id in
+  Id.of_string ("param_" ^ id)
+
 (** Record of translation between globals *)
 
 type translator = ETranslate.translator
@@ -33,6 +37,8 @@ let empty_translator = {
   pinds = Mindmap.empty;
   wrefs = Cmap.empty;
   winds = Mindmap.empty;
+  paramrefs = Cmap.empty;
+  paraminds = Mindmap.empty;
 }
 
 let translator : translator ref =
@@ -417,9 +423,7 @@ let param_ind env mutind =
   let filter (_,d) =
     match d with
     | Entries.LocalDefEntry _ -> false
-    | Entries.LocalAssumEntry constr ->
-       
-       true
+    | Entries.LocalAssumEntry constr -> true
   in
   let params = List.filter filter entry.mind_entry_params in
   let kk = List.hd params in 
@@ -431,61 +435,39 @@ let param_ind env mutind =
   in
   ()
     
-let instantiate_parametric_modality err translator (name, n)  =
+let instantiate_parametric_modality err translator (name, n) ext  =
   let open Declarations in 
   let env = Global.env () in
   let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
 
   let mind' = EUtil.process_inductive mind in
-  let mind_ = ETranslate.param_block err translator env name mind mind' in
-  (*
+  let mind_ = ETranslate.param_inductive err translator env name mind mind' in
   let ((_, kn), _) = Declare.declare_mind mind_ in
   let ind_ = Global.mind_of_delta_kn kn in
-  let extensions = 
-    if primitive_records then 
-      let env = Global.env () in
-      let proj  = primitives_from_declaration env ind in 
-      let proj_ = primitives_from_declaration env ind_ in 
-      let pair = List.combine proj proj_ in
-      List.map (fun (p, pe) -> ExtConstant (p, ConstRef pe)) pair
-    else
-      []
+  let () = Feedback.msg_info (Pp.str "|||||||||||||||||||||||||||||||||||||||||||||") in
+  
+  let env = Global.env () in
+  let (sigma, params) = ETranslate.param_definition err translator env (name, ind_) mind mind' in
+  let map n param =
+    let open Entries in 
+    let body = EConstr.to_constr sigma param in
+    let uctx = UState.context (Evd.evar_universe_context sigma) in
+    let ce = Declare.definition_entry  ~univs:uctx body in
+    let cd = Entries.DefinitionEntry ce in
+    let decl = (cd, IsProof Lemma) in
+    let id = (List.nth mind'.mind_entry_inds n).mind_entry_typename in
+    let id = translate_param_name id in
+    let () = Feedback.msg_info (Id.print id) in
+    let cst_ = Declare.declare_constant id decl in
+    cst_
   in
-   *)
+  let _ = List.mapi map params in
   ()
-  (*
-  let base_label = Label.to_string (MutInd.label (fst ind)) in
-  let instance_name = Id.of_string ("param_" ^ base_label ) in 
-  let () = Feedback.msg_info (Id.print instance_name) in
-  let nparams = mutind.mind_nparams in 
-  let instance_body =
-    let open Term in
-    let full_args = (nparams + pind.mind_nrealdecls) in
-    let () = Feedback.msg_info (Pp.str "Full args: " ++ Pp.int full_args) in
-    let map decl =
-      let open Context.Rel.Declaration in 
-      match decl with
-      | LocalAssum _ -> true
-      | LocalDef _ -> false
-    in
-    let args_type = List.map map pind.mind_arity_ctxt in
-    let args_rel = List.init (List.length pind.mind_arity_ctxt) (fun i -> mkRel (i+1)) in 
-    let args = List.filter_with args_type args_rel in 
-    let ind_body = applist (mkInd ind, List.rev args) in
-    let part_body = ind_body in
-    let prop = mkRel 0 in
-    let lambda = mkLambda (Name.Anonymous, part_body, prop) in
-    let f = it_mkLambda_or_LetIn lambda pind.mind_arity_ctxt in
-    let () = Feedback.msg_info (Printer.pr_constr f) in
-    ()
-  in
-  (*let def_entr = Declare.declare_definition instance_name (instance_body, empty_ctx) in *)
-  ()
-  *)
+
     
 let wtranslate_inductive err translator ind =
   let ext = translate_inductive_gen ETranslate.wtranslate_inductive err translator ind in 
-  let _ = instantiate_parametric_modality err translator ind in
+  let _ = instantiate_parametric_modality err translator ind ext in
   ext
                           
 let wtranslate ?exn ?names gr =
