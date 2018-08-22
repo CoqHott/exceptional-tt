@@ -30,6 +30,8 @@ type translator = {
   pinds : MutInd.t global_translation Mindmap.t;
   wrefs : global_reference global_translation Cmap.t;
   winds : MutInd.t global_translation Mindmap.t;
+  paramrefs : global_reference global_translation Mindmap.t;
+  paraminds : MutInd.t global_translation Mindmap.t;
 }
 
 type context = {
@@ -124,12 +126,18 @@ let el_e = ConstRef (Constant.make1 (make_kn "El"))
 let prod_e = ConstRef (Constant.make1 (make_kn "Prodᵉ"))
 let err_e = ConstRef (Constant.make1 (make_kn "Err"))
 let typeval_e = ConstructRef ((MutInd.make1 (make_kn "type"), 0), 1)
-let param_def = ConstRef (Constant.make1 (make_kn "param"))
+
+let default_mutind = MutInd.make1 (make_kn "effect_default")
+let default_mutind_e = MutInd.make1 (make_kn "effect_defaultᵒ")
+let param_cst = Constant.make1 (make_kn "param")
+let param_cst_e = Constant.make1 (make_kn "paramᵉ")
+
+let param_def = ConstRef param_cst_e
+let param_def_e = ConstRef param_cst_e
 
 let param_modality =
   let ind = MutInd.make1 (make_kn "ParamMod") in
   IndRef (ind, 0)
-
 
 let name_errtype = Id.of_string "E"
 let name_err = Id.of_string "e"  
@@ -1250,6 +1258,27 @@ let get_wcst env cst =
   try get_instance env.werror (Cmap.find cst env.wtranslator.wrefs)
   with Not_found -> raise (MissingGlobal (env.werror, ConstRef cst))
 
+let get_wparam_cst env (ind, n) =
+  try
+    let gen, cst = get_instance env.werror (Mindmap.find ind env.wtranslator.paramrefs) in
+    gen, cst
+  with Not_found -> raise (MissingGlobal (env.werror, IndRef (ind, n)))
+
+let get_wparam_ind env (ind, n) =
+  try
+    let gen, ind = get_instance env.werror (Mindmap.find ind env.wtranslator.paraminds) in
+    gen, (ind, n)
+  with Not_found -> raise (MissingGlobal (env.werror, IndRef (ind, n)))
+
+let apply_gen_wglobal env gen sigma gr =
+  let (sigma, c) = Evd.fresh_global env.wenv_wtgt sigma gr in
+  let c = EConstr.of_constr c in
+  if gen then
+    let e = mkRel (Environ.nb_rel env.wenv_wtgt) in
+    (sigma, mkApp (c, [|e|]))
+  else
+    (sigma, c)
+
 let apply_wglobal env sigma gr =
   let gen, gr = match gr with
   | ConstructRef (ind, n) ->
@@ -1261,13 +1290,7 @@ let apply_wglobal env sigma gr =
   | ConstRef cst -> get_wcst env cst
   | VarRef _ -> CErrors.user_err (str "Variables not handled")
   in
-  let (sigma, c) = Evd.fresh_global env.wenv_wtgt sigma gr in
-  let c = EConstr.of_constr c in
-  if gen then
-    let e = mkRel (Environ.nb_rel env.wenv_wtgt) in
-    (sigma, mkApp (c, [|e|]))
-  else
-    (sigma, c)
+  apply_gen_wglobal env gen sigma gr
 
 let wfresh_global env sigma gr =
   try
@@ -1368,158 +1391,197 @@ let param_test sigma t args =
     false
 
 let rec owtranslate env sigma c = match EConstr.kind sigma c with
-  | Rel n ->
-     let m = wdebruijn_lookup env.wcontext n in
-     (sigma, mkRel m) 
-  | Sort _ | Prod _ ->
-     let (sigma, c_) = otranslate_type (wproject env) sigma c in
-     let c_ = wlift env c_ in
-     let (sigma, w) = owtranslate_type env sigma c in
-     let w = mkLambda (Anonymous, c_, w) in
-     (sigma, w)
-  | Lambda (na, t, u) ->
-     let (sigma, t_) = otranslate_type (wproject env) sigma t in
-     let extended_env = EConstr.push_rel (LocalAssum (na, t)) env.wenv_src in
-     let cod_prop = arity_type_prop_check env.wenv_src sigma t in
-     let (sigma, u_typ) = Typing.type_of extended_env sigma u in
-     let dom_prop = arity_type_prop_check extended_env sigma u_typ in
-     let weakly_check = not cod_prop && dom_prop in
-     let (sigma, tw) =
-       if weakly_check then (sigma, None)
-       else let (s, o) = owtranslate_type env sigma t in 
-            (s, Some o)
-     in 
-     let nenv = push_wassum na (t, t_) tw env in
-     let (sigma, uw) = owtranslate nenv sigma u in
-     let ctx = wtop_decls nenv weakly_check in
-     let w = it_mkLambda_or_LetIn uw ctx in
-     (sigma, w)
-  | LetIn (na, c, t, u) ->
-     let (sigma, c_) = otranslate (wproject env) sigma c in
-     let (sigma, t_) = otranslate_type (wproject env) sigma t in
-     let extended_env = EConstr.push_rel (LocalDef (na, c, t)) env.wenv_src in
-     let cod_prop = arity_type_prop_check env.wenv_src sigma t in
-     let (sigma, u_typ) = Typing.type_of extended_env sigma u in
-     let dom_prop = arity_type_prop_check extended_env sigma u_typ in
-     let weakly_check = not cod_prop && dom_prop in
-     let (sigma, ctw) =
-       if weakly_check then (sigma, (None, None))
-       else let (s, cw) = owtranslate_type env sigma c in 
-            let (s, tw) = owtranslate_type env s t in
-            (s, (Some cw, Some tw))
-     in 
-     let nenv = push_wdef na (c, c_) (t, t_) ctw env in 
-     let ctx = wtop_decls nenv weakly_check in
-     let (sigma, ur) = owtranslate nenv sigma u in
-     let r = it_mkLambda_or_LetIn ur ctx in
-     (sigma, r)
-  | App (t, args) when param_test sigma t args ->
-     let (ind,_) = EConstr.destInd sigma args.(0) in
-
-     (sigma, t)
-  | App (t, args) ->
-     let args = Array.to_list args in
-     let (sigma, tw) = owtranslate env sigma t in
-     let is_primitive = 
-       if isConstruct sigma t then
-         let ((ind, c), u) = destConstruct sigma t in
-         let specif = Inductive.lookup_mind_specif env.wenv_wtgt ind in 
-         Inductive.is_primitive_record specif 
-       else
-         false
-     in
-     let (sigma, t_typ) = Typing.type_of env.wenv_src sigma t in
-     let number_of_args = List.length args in
-     let wargs_typ = wargument_of_prod env.wenv_src sigma t_typ in
-     let wargs_typn = List.firstn number_of_args wargs_typ in 
-     let fold (t, typ) (sigma, accum) = 
-       let (sigma, t_) = otranslate (wproject env) sigma t in
-       let t_ = wlift env t_ in
-       match typ with
-       | Simple -> (sigma, t_ :: accum)
-       | Double -> 
-          let (sigma, tw) = owtranslate env sigma t in
-          (sigma, t_ :: tw :: accum)
-     in
-     let zip = List.combine args wargs_typn in
-     let (sigma, argsw) = List.fold_right fold zip (sigma, []) in
-     let (sigma, argsw) = 
-       if is_primitive then
-         let ((ind,c), u) = destConstruct sigma t in
-         let _, indw = get_wind env ind in 
-         let specifw = Inductive.lookup_mind_specif env.wenv_wtgt indw in 
-         let n_params_wo_rec_nor_err = (Inductive.inductive_params specifw) - 2 in 
-         let (params,fields) = List.chop n_params_wo_rec_nor_err argsw in
-         let fields = List.filteri (fun i _ -> i mod 2 == 1) fields in
-         let (sigma, t_) = otranslate (wproject env) sigma (applist (t, args)) in
-         (sigma, params @ (t_ :: fields))
-       else
-         (sigma, argsw)
-     in
-     let w = applist (tw, argsw) in
-     (sigma, w)
-  | Var id ->
-     apply_wglobal env sigma (VarRef id)
-  | Const (p, _) ->
-     let (sigma, c) = apply_wglobal env sigma (ConstRef p) in
-     (sigma, c)
-  | Ind (ind, _) ->
-     let (sigma, c) = apply_wglobal env sigma (IndRef ind) in
-     (sigma, c)
-  | Construct (c, _) ->
-     let (sigma, c) = apply_wglobal env sigma (ConstructRef c) in
-     (sigma, c)
-  | Case (ci, r, d, p) ->
-     let (_, mip) = Inductive.lookup_mind_specif env.wenv_src ci.ci_ind in
-     let ciw = wtranslate_case_info env sigma ci mip in     
-     let (sigma, dw) = owtranslate env sigma d in
-     let map sigma p = owtranslate env sigma p in
-     let (sigma, pw) = Array.fold_map map sigma p in
-     let (ctx, r) = EConstr.decompose_lam_assum sigma r in
-     let weakly_dom = one_ind_in_prop mip in
-     let (sigma, nenv, ctxw) = owtranslate_context env sigma weakly_dom ctx in
-     let (sigma, wr) = owtranslate_type nenv sigma r in
-     let c = Vars.lift (List.length ctx) c in
-     let (ci, r, _, p) = destCase sigma c in
-     let c = mkCase (ci, r, mkRel 1, p) in
-     let (sigma, ce) = otranslate (wproject nenv) sigma c in
-     let ce = wlift nenv ce in
-     let rw = it_mkLambda_or_LetIn (Vars.subst1 ce wr) ctxw in
-     let w = mkCase (ciw, rw, dw, pw) in
-     (sigma, w)
-  | _ ->
-     (sigma, c)
+| Rel n ->
+   let m = wdebruijn_lookup env.wcontext n in
+   (sigma, mkRel m) 
+| Sort _ | Prod _ ->
+   let (sigma, c_) = otranslate_type (wproject env) sigma c in
+   let c_ = wlift env c_ in
+   let (sigma, w) = owtranslate_type env sigma c in
+   let w = mkLambda (Anonymous, c_, w) in
+   (sigma, w)
+| Lambda (na, t, u) ->
+   let (sigma, t_) = otranslate_type (wproject env) sigma t in
+   let extended_env = EConstr.push_rel (LocalAssum (na, t)) env.wenv_src in
+   let cod_prop = arity_type_prop_check env.wenv_src sigma t in
+   let (sigma, u_typ) = Typing.type_of extended_env sigma u in
+   let dom_prop = arity_type_prop_check extended_env sigma u_typ in
+   let weakly_check = not cod_prop && dom_prop in
+   let (sigma, tw) =
+     if weakly_check then (sigma, None)
+     else let (s, o) = owtranslate_type env sigma t in 
+          (s, Some o)
+   in 
+   let nenv = push_wassum na (t, t_) tw env in
+   let (sigma, uw) = owtranslate nenv sigma u in
+   let ctx = wtop_decls nenv weakly_check in
+   let w = it_mkLambda_or_LetIn uw ctx in
+   (sigma, w)
+| LetIn (na, c, t, u) ->
+   let (sigma, c_) = otranslate (wproject env) sigma c in
+   let (sigma, t_) = otranslate_type (wproject env) sigma t in
+   let extended_env = EConstr.push_rel (LocalDef (na, c, t)) env.wenv_src in
+   let cod_prop = arity_type_prop_check env.wenv_src sigma t in
+   let (sigma, u_typ) = Typing.type_of extended_env sigma u in
+   let dom_prop = arity_type_prop_check extended_env sigma u_typ in
+   let weakly_check = not cod_prop && dom_prop in
+   let (sigma, ctw) =
+     if weakly_check then (sigma, (None, None))
+     else let (s, cw) = owtranslate_type env sigma c in 
+          let (s, tw) = owtranslate_type env s t in
+          (s, (Some cw, Some tw))
+   in 
+   let nenv = push_wdef na (c, c_) (t, t_) ctw env in 
+   let ctx = wtop_decls nenv weakly_check in
+   let (sigma, ur) = owtranslate nenv sigma u in
+   let r = it_mkLambda_or_LetIn ur ctx in
+   (sigma, r)
+| App (t, args) when param_test sigma t args ->
+   let c_mind_arg = args.(0) in 
+   let c_mind_cons = args.(1) in
+   let (c_mind, c_mind_args) = 
+     if EConstr.isApp sigma c_mind_arg then 
+       let (ind, args) = EConstr.destApp sigma c_mind_arg in
+       (ind, Array.to_list args) 
+     else if EConstr.isInd sigma c_mind_arg then 
+       (c_mind_arg, []) 
+     else
+       raise Not_found
+   in
+   let (mind,_) = EConstr.destInd sigma c_mind in
+   let () = Feedback.msg_info (Pp.str "----") in
+   let (sigma, t_type) = Typing.type_of env.wenv_src sigma c_mind in
+   let wargs_typ = wargument_of_prod env.wenv_src sigma t_type in
+   let number_of_args = List.length c_mind_args in
+   let wargs_typ = List.firstn number_of_args wargs_typ in 
+   let () = Feedback.msg_info (Pp.str "$$$$") in
+   let () = Feedback.msg_info (Pp.str "####") in
+   let (sigma, c_minde) = otranslate_type (wproject env) sigma c_mind in
+   let (cst_gen, cst_param) = get_wparam_cst env mind in
+   let (sigma, cst_param)= apply_gen_wglobal env cst_gen sigma cst_param in
+   (*applist (c_minde, mind_argse) in*)
+   let (ind_gen, (ind_param, n_ind as ind)) = get_wparam_ind env mind in
+   let (sigma, ind_param) = apply_gen_wglobal env ind_gen sigma (IndRef ind) in
+   let () = Feedback.msg_info (Pp.str "cst: " ++ Printer.pr_econstr cst_param) in
+   let () = Feedback.msg_info (Pp.str "ind: " ++ Printer.pr_econstr ind_param) in
+   let fold t (sigma, accum) =
+     let (sigma, t_) = otranslate (wproject env) sigma t in
+     let t_ = wlift env t_ in
+     (sigma, t_ :: accum)
+   in
+   let (sigma, mind_argse) = List.fold_right fold c_mind_args (sigma, []) in
+   let (sigma, t_minde) =  otranslate (wproject env) sigma c_mind_cons in
+   let t_minde = wlift env t_minde in
+   let () = Feedback.msg_info (Printer.pr_econstr t_minde) in
+   let param_arg = applist (ind_param, mind_argse @ [t_minde]) in
+   let param_term = applist (cst_param, mind_argse @ [t_minde]) in
+   let () = Feedback.msg_info (Pp.str "Full term -> " ++ Printer.pr_econstr param_term) in
+   let (sigma,_) = Typing.type_of env.wenv_wtgt sigma param_term in
+   let () = Feedback.msg_info (Pp.str "Term check") in
+   (sigma, param_term)
+| App (t, args) ->
+   let args = Array.to_list args in
+   let (sigma, tw) = owtranslate env sigma t in
+   let is_primitive = 
+     if isConstruct sigma t then
+       let ((ind, c), u) = destConstruct sigma t in
+       let specif = Inductive.lookup_mind_specif env.wenv_wtgt ind in 
+       Inductive.is_primitive_record specif 
+     else
+       false
+   in
+   let (sigma, t_typ) = Typing.type_of env.wenv_src sigma t in
+   let number_of_args = List.length args in
+   let wargs_typ = wargument_of_prod env.wenv_src sigma t_typ in
+   let wargs_typn = List.firstn number_of_args wargs_typ in 
+   let fold (t, typ) (sigma, accum) = 
+     let (sigma, t_) = otranslate (wproject env) sigma t in
+     let t_ = wlift env t_ in
+     match typ with
+     | Simple -> (sigma, t_ :: accum)
+     | Double -> 
+        let (sigma, tw) = owtranslate env sigma t in
+        (sigma, t_ :: tw :: accum)
+   in
+   let zip = List.combine args wargs_typn in
+   let (sigma, argsw) = List.fold_right fold zip (sigma, []) in
+   let (sigma, argsw) = 
+     if is_primitive then
+       let ((ind,c), u) = destConstruct sigma t in
+       let _, indw = get_wind env ind in 
+       let specifw = Inductive.lookup_mind_specif env.wenv_wtgt indw in 
+       let n_params_wo_rec_nor_err = (Inductive.inductive_params specifw) - 2 in 
+       let (params,fields) = List.chop n_params_wo_rec_nor_err argsw in
+       let fields = List.filteri (fun i _ -> i mod 2 == 1) fields in
+       let (sigma, t_) = otranslate (wproject env) sigma (applist (t, args)) in
+       (sigma, params @ (t_ :: fields))
+     else
+       (sigma, argsw)
+   in
+   let w = applist (tw, argsw) in
+   (sigma, w)
+| Var id ->
+   apply_wglobal env sigma (VarRef id)
+| Const (p, _) ->
+   let (sigma, c) = apply_wglobal env sigma (ConstRef p) in
+   (sigma, c)
+| Ind (ind, _) ->
+   let (sigma, c) = apply_wglobal env sigma (IndRef ind) in
+   (sigma, c)
+| Construct (c, _) ->
+   let (sigma, c) = apply_wglobal env sigma (ConstructRef c) in
+   (sigma, c)
+| Case (ci, r, d, p) ->
+   let (_, mip) = Inductive.lookup_mind_specif env.wenv_src ci.ci_ind in
+   let ciw = wtranslate_case_info env sigma ci mip in     
+   let (sigma, dw) = owtranslate env sigma d in
+   let map sigma p = owtranslate env sigma p in
+   let (sigma, pw) = Array.fold_map map sigma p in
+   let (ctx, r) = EConstr.decompose_lam_assum sigma r in
+   let weakly_dom = one_ind_in_prop mip in
+   let (sigma, nenv, ctxw) = owtranslate_context env sigma weakly_dom ctx in
+   let (sigma, wr) = owtranslate_type nenv sigma r in
+   let c = Vars.lift (List.length ctx) c in
+   let (ci, r, _, p) = destCase sigma c in
+   let c = mkCase (ci, r, mkRel 1, p) in
+   let (sigma, ce) = otranslate (wproject nenv) sigma c in
+   let ce = wlift nenv ce in
+   let rw = it_mkLambda_or_LetIn (Vars.subst1 ce wr) ctxw in
+   let w = mkCase (ciw, rw, dw, pw) in
+   (sigma, w)
+| _ ->
+   (sigma, c)
 and owtranslate_type env sigma c = match EConstr.kind sigma c with
-  | Sort s ->
-     let (sigma, el) = wfresh_global env sigma el_e in
-     let e = mkRel (Environ.nb_rel env.wenv_wtgt + 1) in
-     let (sigma, s) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.wenv_wtgt sigma InType in
-     let r = mkArrow (mkApp (el, [|e; mkRel 1|])) (mkSort s) in
-     (sigma, r)
-  | Prod (na,t,u) ->
-     let (sigma, t_) = otranslate_type (wproject env) sigma t in
-     let ar_prop_cod = arity_type_prop_check env.wenv_src sigma t in
-     let extended_env = EConstr.push_rel (LocalAssum (na, t)) env.wenv_src in
-     let ar_prop_dom = arity_type_prop_check extended_env sigma u in
-     let weakly_check = not ar_prop_cod && ar_prop_dom in
-     let (sigma, tw)= 
-       if weakly_check then (sigma, None)
-       else let (s, o) = owtranslate_type env sigma t in 
-            (s, Some o)
-     in 
-     let nenv = push_wassum na (t, t_) tw env in
-     let (sigma, uw) = owtranslate_type nenv sigma u in
-     let n = if weakly_check then 2 else 3 in
-     let uw = Vars.liftn 1 (if weakly_check then 3 else 4) uw in
-     let uw = Vars.subst1 (mkApp (mkRel n, [| mkRel (n - 1) |])) uw in
-     let ctx = wtop_decls nenv weakly_check in
-     let ctx = lift_rel_context 1 ctx in
-     let r = it_mkProd_or_LetIn uw ctx in
-     (sigma, r)
-  | _ ->
-     let (sigma, cr) = owtranslate env sigma c in
-     (sigma, mkApp (Vars.lift 1 cr, [| mkRel 1 |]))
-
+| Sort s ->
+   let (sigma, el) = wfresh_global env sigma el_e in
+   let e = mkRel (Environ.nb_rel env.wenv_wtgt + 1) in
+   let (sigma, s) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.wenv_wtgt sigma InType in
+   let r = mkArrow (mkApp (el, [|e; mkRel 1|])) (mkSort s) in
+   (sigma, r)
+| Prod (na,t,u) ->
+   let (sigma, t_) = otranslate_type (wproject env) sigma t in
+   let ar_prop_cod = arity_type_prop_check env.wenv_src sigma t in
+   let extended_env = EConstr.push_rel (LocalAssum (na, t)) env.wenv_src in
+   let ar_prop_dom = arity_type_prop_check extended_env sigma u in
+   let weakly_check = not ar_prop_cod && ar_prop_dom in
+   let (sigma, tw)= 
+     if weakly_check then (sigma, None)
+     else let (s, o) = owtranslate_type env sigma t in 
+          (s, Some o)
+   in 
+   let nenv = push_wassum na (t, t_) tw env in
+   let (sigma, uw) = owtranslate_type nenv sigma u in
+   let n = if weakly_check then 2 else 3 in
+   let uw = Vars.liftn 1 (if weakly_check then 3 else 4) uw in
+   let uw = Vars.subst1 (mkApp (mkRel n, [| mkRel (n - 1) |])) uw in
+   let ctx = wtop_decls nenv weakly_check in
+   let ctx = lift_rel_context 1 ctx in
+   let r = it_mkProd_or_LetIn uw ctx in
+   (sigma, r)
+| _ ->
+   let (sigma, cr) = owtranslate env sigma c in
+   (sigma, mkApp (Vars.lift 1 cr, [| mkRel 1 |]))
+     
 and owtranslate_context env sigma weakly_end = function 
 | [] -> sigma, env, []
 | LocalAssum (na, t) :: params ->
@@ -1969,18 +2031,45 @@ let param_definition_ind err env sigma full_args mind_d mind_e one_d one_e param
   let mind_arity_ctxt = List.map EConstr.of_rel_decl one_d.mind_arity_ctxt in
   let nindices = List.length one_d.mind_arity_ctxt - List.length mind_d.mind_params_ctxt in
   let index_ctxt, _ = List.chop nindices mind_arity_ctxt in
-  let (sigma, arity_env, arity_ctx') = otranslate_context env sigma index_ctxt in
+  let (sigma, env, arity_ctx') = otranslate_context env sigma index_ctxt in
   let () = Feedback.msg_info (Pp.str "*************") in
   let args = arity_ctx' @ param_decl_trans in
   let gen, ind_trans = get_ind env (block, n) in
   let (sigma, (ind_, u)) = Evd.fresh_inductive_instance env.env_tgt sigma ind_trans in
-  let ind_trans = mkIndU (ind_, EInstance.make u) in  
+  let cind_trans = mkIndU (ind_, EInstance.make u) in  
   let nargs = List.length one_d.mind_arity_ctxt in
-  let ind_trans = if gen then mkApp (ind_trans, [| mkRel (nargs + 1) |]) else ind_trans in
+  let cind_trans = if gen then mkApp (cind_trans, [| mkRel (nargs + 1) |]) else cind_trans in
   let ind_trans_args = List.init (List.length args) (fun i -> mkRel (nargs - i)) in
-  let ind_trans = applist (ind_trans, ind_trans_args) in 
-  let ind_trans_decl = LocalAssum (Anonymous, ind_trans) in
+  let cind_trans = applist (cind_trans, ind_trans_args) in 
+  let ind_trans_decl = LocalAssum (Anonymous, cind_trans) in
   let args = ind_trans_decl :: args in 
+  
+
+  let (sigma, args) = 
+    let e = mkRel (List.length args + 1) in 
+    let ind_trans_args = List.map (fun i -> Vars.lift 1 i) ind_trans_args in
+    
+    let () = Feedback.msg_info (Names.MutInd.print block) in
+    let (sigma, (wind_, u)) = Evd.fresh_inductive_instance env.env_tgt sigma ind_trans in
+    let wind_ = mkIndU (wind_, EInstance.make u) in  
+    let wind_ = if gen then mkApp (wind_, [| e |]) else wind_ in
+    let wind_ = applist (wind_, ind_trans_args) in
+
+    let ex = Array.length one_d.mind_consnames + 1 in
+    let (sigma, (cons_, u)) = Evd.fresh_constructor_instance env.env_tgt sigma (ind_trans, ex) in
+    let wind_default = mkConstructU (cons_, EInstance.make u) in  
+    let wind_default = if gen then mkApp (wind_default, [| e |]) else wind_default in
+    let wind_default = applist (wind_default, List.firstn nargs ind_trans_args) in
+
+    let (sigma, c_param_e) = fresh_global env sigma param_def_e in
+    let (sigma, type_val) = fresh_global env sigma typeval_e in
+    let var = mkApp (type_val, [|e; wind_; wind_default|]) in
+    let c_param_e = mkApp (c_param_e, [|e; var; mkRel 1|]) in
+    let (sigma, c_el) = fresh_global env sigma el_e in
+    let c_el = mkApp (c_el, [| e; c_param_e |]) in
+    let () = Feedback.msg_info (Pp.str "param " ++ Printer.pr_econstr c_el) in
+    (sigma, LocalAssum (Anonymous, c_el) :: args)
+  in
   
   let () = Feedback.msg_info (Pp.str "<-- (" ++ MutInd.print wblock ++ Pp.str "-" ++ Pp.int n) in
   let (sigma, (wind_, u)) = Evd.fresh_inductive_instance env.env_tgt sigma (wblock, n) in
@@ -1988,7 +2077,9 @@ let param_definition_ind err env sigma full_args mind_d mind_e one_d one_e param
   let () = Feedback.msg_info (Pp.str "---> " ++ Printer.pr_econstr wind_trans) in
   let ind_trans_args = mkRel (nargs + 1) :: ind_trans_args in
   let ind_trans_args = if wgen then mkRel (nargs + 2) :: ind_trans_args else ind_trans_args in
-  let param_def = it_mkLambda_or_LetIn (applist (wind_trans, ind_trans_args)) args in
+  let ind_inner_param = (applist (wind_trans, ind_trans_args)) in
+  let ind_inner_param = Vars.lift 1 ind_inner_param in
+  let param_def = it_mkLambda_or_LetIn  ind_inner_param args in
   let decl = get_exception env in
   let param_def = mkLambda_or_LetIn decl param_def in
   let () = Feedback.msg_info (Pp.str "**>" ++ Printer.pr_econstr param_def) in

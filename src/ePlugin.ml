@@ -37,7 +37,7 @@ let empty_translator = {
   pinds = Mindmap.empty;
   wrefs = Cmap.empty;
   winds = Mindmap.empty;
-  paramrefs = Cmap.empty;
+  paramrefs = Mindmap.empty;
   paraminds = Mindmap.empty;
 }
 
@@ -52,6 +52,8 @@ type extension_type =
 type extension =
 | ExtConstant of Constant.t * global_reference
 | ExtInductive of MutInd.t * MutInd.t
+| ExtParamInductive of MutInd.t * MutInd.t
+| ExtParamConstant of MutInd.t * global_reference
 
 type translator_obj =
 | ExtendEffect of extension_type * global_reference option * extension list
@@ -97,6 +99,11 @@ let extend_translator tr knd exn l =
     { accu with wrefs = extend_constant exn cst gr accu.wrefs }
   | ExtWeakly, ExtInductive (mind, mind') ->
     { accu with winds = extend_inductive exn mind mind' accu.winds }
+  | ExtWeakly, ExtParamConstant (cst, gr) ->
+    { accu with paramrefs = extend_inductive exn cst gr accu.paramrefs }
+  | ExtWeakly, ExtParamInductive (mind, mind') ->
+    { accu with paraminds = extend_inductive exn mind mind' accu.paraminds }
+  | _ -> accu
   in
   List.fold_left fold tr l
 
@@ -118,6 +125,17 @@ let subst_extension subst ext = match ext with
   let tmind' = subst_mind subst tmind in
   if smind' == smind && tmind' == tmind then ext
   else ExtInductive (smind', tmind')
+(** what !!! *)
+| ExtParamConstant (smind, gr) ->
+  let smind' = subst_mind subst smind in
+  let gr' = subst_global_reference subst gr in
+  if smind' == smind && gr' == gr then ext
+  else ExtParamConstant (smind', gr')
+| ExtParamInductive (smind, tmind) ->
+  let smind' = subst_mind subst smind in
+  let tmind' = subst_mind subst tmind in
+  if smind' == smind && tmind' == tmind then ext
+  else ExtParamInductive (smind', tmind')
 
 let subst_translator (subst, obj) = match obj with
 | ExtendEffect (knd, exn, l) ->
@@ -262,6 +280,10 @@ let msg_translate = function
     str " has been translated as " ++ Printer.pr_global dst ++ str ".")
   in
   prlist_with_sep fnl pr l
+| ExtParamInductive _ -> 
+   str "Parametric inducitve extension"
+| ExtParamConstant _ ->
+   str "Parametric constant extension"
 
 let translate ?exn ?names gr =
   let ids = names in
@@ -413,27 +435,6 @@ let wtranslate_constant err translator cst ids =
   let uctx = UState.context (Evd.evar_universe_context sigma) in
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (cst, ConstRef cst_)]
-
-let param_ind env mutind =
-  let open Entries in 
-  let param_name = Id.of_string ("param_ind_") in 
-  let entry = EUtil.process_inductive mutind in
-  let record = None in
-  let finite = Finite in
-  let filter (_,d) =
-    match d with
-    | Entries.LocalDefEntry _ -> false
-    | Entries.LocalAssumEntry constr -> true
-  in
-  let params = List.filter filter entry.mind_entry_params in
-  let kk = List.hd params in 
-  let entry = { entry with
-      mind_entry_record = record;
-      mind_entry_finite = finite;
-      mind_entry_params = params;
-    }
-  in
-  ()
     
 let instantiate_parametric_modality err translator (name, n) ext  =
   let open Declarations in 
@@ -445,7 +446,7 @@ let instantiate_parametric_modality err translator (name, n) ext  =
   let ((_, kn), _) = Declare.declare_mind mind_ in
   let ind_ = Global.mind_of_delta_kn kn in
   let () = Feedback.msg_info (Pp.str "|||||||||||||||||||||||||||||||||||||||||||||") in
-  
+
   let env = Global.env () in
   let (sigma, params) = ETranslate.param_definition err translator env (name, ind_) mind mind' in
   let map n param =
@@ -459,16 +460,15 @@ let instantiate_parametric_modality err translator (name, n) ext  =
     let id = translate_param_name id in
     let () = Feedback.msg_info (Id.print id) in
     let cst_ = Declare.declare_constant id decl in
-    cst_
+    ExtParamConstant (name, ConstRef cst_)
   in
-  let _ = List.mapi map params in
-  ()
-
+  let extension = List.mapi map params in
+  ExtParamInductive (name, ind_) :: extension
     
 let wtranslate_inductive err translator ind =
   let ext = translate_inductive_gen ETranslate.wtranslate_inductive err translator ind in 
-  let _ = instantiate_parametric_modality err translator ind ext in
-  ext
+  let param_ext = instantiate_parametric_modality err translator ind ext in
+  ext @ param_ext
                           
 let wtranslate ?exn ?names gr =
   let ids = names in
@@ -524,14 +524,14 @@ let wimplement ?exn gr =
 (** List translate *)
 
 module Generic = struct
-open Libnames
-open Names
-
-let generic_translate ?exn
-      (gr_list:reference list) 
-      (generic: ?exn:reference -> ?names:Id.t list-> reference -> unit) =
-  let fold () gr = generic ?exn gr in
-  List.fold_left fold () gr_list
+  open Libnames
+  open Names
+         
+  let generic_translate ?exn
+        (gr_list:reference list) 
+        (generic: ?exn:reference -> ?names:Id.t list-> reference -> unit) =
+    let fold () gr = generic ?exn gr in
+    List.fold_left fold () gr_list
 end
 open Generic
                       
@@ -541,3 +541,12 @@ let list_ptranslate ?exn gr_list =
   generic_translate ?exn gr_list ptranslate
 let list_wtranslate ?exn gr_list = 
   generic_translate ?exn gr_list wtranslate
+
+(*
+let () = 
+  let effect_path = DirPath.make (List.map Id.of_string ["Effects"; "Weakly"]) in
+  let ids = List.map Id.of_string ["effect_default"; "param"] in
+  let qualids = List.map (fun d -> Libnames.make_qualid effect_path d) ids in
+  let references = List.map (fun d -> Libnames.Qualid (None, d)) qualids in
+  list_translate references
+ *)

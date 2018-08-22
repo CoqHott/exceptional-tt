@@ -1,5 +1,8 @@
 
 Require Import Weakly.Effects.
+Effect List Translate effect_default param.
+Parametricity List Translate effect_default param.
+
 
 Inductive p : nat -> Type := d: p 0 | l: p 1 -> p 2.
 
@@ -24,7 +27,25 @@ Inductive param_eq' (E: Type) (A: @El E Typeᵉ) (x: @El E A):
                    forall (H:@El E A), eqᵒ E A x H -> Type :=
 param_eq_refl': param_eq' _ _ _ _ (eq_reflᵉ E A x). Print param_eq'.
 
-Weakly List Translate nat.
+Inductive dd: nat -> Set := ddd: dd 1.
+Weakly List Translate nat. Print param_nat.
+Weakly List Translate eq. Print param_eq.
+
+Check param (@eq).
+
+Definition param_eq'': forall (A: Type) (x y: A), x = y -> Prop. 
+Proof. intros. exact True. Defined.
+Effect Translate param_eq''. Print param_eq''ᵉ.
+Parametricity Translate param_eq''. Print param_eq''ᴿ.
+
+Definition hh: forall (x: nat), param x -> x = x := fun _ _ => eq_refl.
+Definition gg: forall (x: dd 0), param x -> x = x := fun _ _ => eq_refl.
+Print gg. (* forall x : dd 4, @param (dd 4) x -> x = x *)
+Effect List Translate dd hh gg. Print ggᵉ.
+Parametricity List Translate dd hh gg. Print ggᴿ. Check paramᵉ.
+Weakly Translate dd. Check paramᵉ. 
+Weakly Translate hh.
+
 Weakly List Translate even.
 Weakly List Translate unit.
 Weakly List Translate list. 

@@ -23,9 +23,13 @@ type translator = {
   pinds : MutInd.t global_translation Mindmap.t;
   wrefs : global_reference global_translation Cmap.t;
   winds : MutInd.t global_translation Mindmap.t;
-  paramrefs : global_reference global_translation Cmap.t;
+  paramrefs : global_reference global_translation Mindmap.t;
   paraminds : MutInd.t global_translation Mindmap.t;
 }
+val default_mutind: Names.MutInd.t
+val default_mutind_e: Names.MutInd.t
+val param_cst: Names.Constant.t
+val param_cst_e: Names.Constant.t
 
 val translate :
   effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
