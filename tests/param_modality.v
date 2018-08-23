@@ -1,8 +1,5 @@
 
 Require Import Weakly.Effects.
-Effect List Translate effect_default param.
-Parametricity List Translate effect_default param.
-
 
 Inductive p : nat -> Type := d: p 0 | l: p 1 -> p 2.
 

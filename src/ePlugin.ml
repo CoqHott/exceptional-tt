@@ -30,16 +30,22 @@ let translate_param_name id =
 
 type translator = ETranslate.translator
 
-let empty_translator = {
-  ETranslate.refs = Cmap.empty;
-  inds = Mindmap.empty;
-  prefs = Cmap.empty;
-  pinds = Mindmap.empty;
-  wrefs = Cmap.empty;
-  winds = Mindmap.empty;
-  paramrefs = Mindmap.empty;
-  paraminds = Mindmap.empty;
-}
+let empty_translator = 
+  let open ETranslate in 
+  let refss = Cmap.add param_cst (GlobGen (ConstRef param_cst_e))  Cmap.empty in
+  let inds = Mindmap.add default_mutind (GlobGen default_mutind_e) Mindmap.empty in
+  let prefs = Cmap.add param_cst (GlobGen (ConstRef param_cst_r))  Cmap.empty in
+  let pinds = Mindmap.add default_mutind (GlobGen default_mutind_r) Mindmap.empty in
+  {
+    ETranslate.refs = refss;
+    inds = inds;
+    prefs = prefs;
+    pinds = pinds;
+    wrefs = Cmap.empty;
+    winds = Mindmap.empty;
+    paramrefs = Mindmap.empty;
+    paraminds = Mindmap.empty;
+  }
 
 let translator : translator ref =
   Summary.ref ~name:"Effect Global Table" empty_translator

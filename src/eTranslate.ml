@@ -129,8 +129,10 @@ let typeval_e = ConstructRef ((MutInd.make1 (make_kn "type"), 0), 1)
 
 let default_mutind = MutInd.make1 (make_kn "effect_default")
 let default_mutind_e = MutInd.make1 (make_kn "effect_defaultᵒ")
+let default_mutind_r = MutInd.make1 (make_kn "effect_defaultᴿ")
 let param_cst = Constant.make1 (make_kn "param")
 let param_cst_e = Constant.make1 (make_kn "paramᵉ")
+let param_cst_r = Constant.make1 (make_kn "paramᴿ")
 
 let param_def = ConstRef param_cst_e
 let param_def_e = ConstRef param_cst_e
@@ -1437,6 +1439,7 @@ let rec owtranslate env sigma c = match EConstr.kind sigma c with
    let r = it_mkLambda_or_LetIn ur ctx in
    (sigma, r)
 | App (t, args) when param_test sigma t args ->
+   let () = Feedback.msg_info (Pp.str "inside param") in
    let c_mind_arg = args.(0) in 
    let c_mind_cons = args.(1) in
    let (c_mind, c_mind_args) = 
@@ -1451,9 +1454,6 @@ let rec owtranslate env sigma c = match EConstr.kind sigma c with
    let (mind,_) = EConstr.destInd sigma c_mind in
    let () = Feedback.msg_info (Pp.str "----") in
    let (sigma, t_type) = Typing.type_of env.wenv_src sigma c_mind in
-   let wargs_typ = wargument_of_prod env.wenv_src sigma t_type in
-   let number_of_args = List.length c_mind_args in
-   let wargs_typ = List.firstn number_of_args wargs_typ in 
    let () = Feedback.msg_info (Pp.str "$$$$") in
    let () = Feedback.msg_info (Pp.str "####") in
    let (sigma, c_minde) = otranslate_type (wproject env) sigma c_mind in
@@ -1473,13 +1473,15 @@ let rec owtranslate env sigma c = match EConstr.kind sigma c with
    let (sigma, t_minde) =  otranslate (wproject env) sigma c_mind_cons in
    let t_minde = wlift env t_minde in
    let () = Feedback.msg_info (Printer.pr_econstr t_minde) in
-   let param_arg = applist (ind_param, mind_argse @ [t_minde]) in
    let param_term = applist (cst_param, mind_argse @ [t_minde]) in
    let () = Feedback.msg_info (Pp.str "Full term -> " ++ Printer.pr_econstr param_term) in
    let (sigma,_) = Typing.type_of env.wenv_wtgt sigma param_term in
    let () = Feedback.msg_info (Pp.str "Term check") in
    (sigma, param_term)
 | App (t, args) ->
+   let () = try Feedback.msg_info (Pp.str "App" ++ Printer.pr_econstr t) 
+            with Not_found -> ()
+   in
    let args = Array.to_list args in
    let (sigma, tw) = owtranslate env sigma t in
    let is_primitive = 

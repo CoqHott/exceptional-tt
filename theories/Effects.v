@@ -5,7 +5,7 @@ Set Universe Polymorphism.
 Set Primitive Projections.
 
 Inductive any@{i} : Type@{i} := Any.
-|
+
 Cumulative Inductive type@{i j} (E : Type@{i}) : Type :=
 | TypeVal : forall (A : Type@{j}), (E -> A) -> type E
 | TypeErr : E -> type E.
@@ -49,11 +49,14 @@ end.
 Inductive effect_default: Prop :=.
 Definition param {A: Type}: A -> Prop := fun _ => effect_default.
 
-(*
 Inductive effect_defaultᵒ (E:Type) : Type := effect_defaultᴱ: E -> effect_defaultᵒ E.
 Definition paramᵉ (E: Type) (A: @El E (@Typeᵉ E)): @El E A -> @El E (@Typeᵉ E) := 
   fun _ => TypeVal E (effect_defaultᵒ E) (effect_defaultᴱ E).
-*)
+
+Inductive effect_defaultᴿ (E:Type) : effect_defaultᵒ E -> Type := .
+Definition paramᴿ (E: Type) (A: @El E (@Typeᵉ E)) (Aᴿ: @El E A -> Type):
+                            forall (a: @El E A), Aᴿ a -> @El E (paramᵉ E A a) -> Type := 
+  fun _  _ => effect_defaultᴿ E.
 
 (*
 Monomorphic Class ParamMod (A: Type) := {
