@@ -134,12 +134,8 @@ let param_cst = Constant.make1 (make_kn "param")
 let param_cst_e = Constant.make1 (make_kn "paramᵉ")
 let param_cst_r = Constant.make1 (make_kn "paramᴿ")
 
-let param_def = ConstRef param_cst_e
+let param_def = ConstRef param_cst
 let param_def_e = ConstRef param_cst_e
-
-let param_modality =
-  let ind = MutInd.make1 (make_kn "ParamMod") in
-  IndRef (ind, 0)
 
 let name_errtype = Id.of_string "E"
 let name_err = Id.of_string "e"  
@@ -1356,17 +1352,16 @@ let push_wdef na (c, ce) (t, te) aw env =
     wcontext = wtype :: env.wcontext;
   }
 
+let one_ind_in_prop ind = 
+  match ind.mind_arity with
+  | RegularArity ar -> is_prop_sort ar.mind_sort
+  | TemplateArity _ -> false
 
 let arity_type_prop_check env sigma ty =
   let sort = Typing.e_sort_of env (ref sigma) ty in
   let ty = (EConstr.to_constr sigma ty) in
   is_prop_sort sort || (try (is_prop_sort (snd (Reduction.dest_arity env ty)))
-                       with Reduction.NotArity -> false)
-
-let one_ind_in_prop ind = 
-  match ind.mind_arity with
-  | RegularArity ar -> is_prop_sort ar.mind_sort
-  | TemplateArity _ -> false
+                        with Reduction.NotArity -> false)
 
 let wargument_of_prod env sigma prod =
   let weak_dom = arity_type_prop_check env sigma prod in
@@ -1439,7 +1434,6 @@ let rec owtranslate env sigma c = match EConstr.kind sigma c with
    let r = it_mkLambda_or_LetIn ur ctx in
    (sigma, r)
 | App (t, args) when param_test sigma t args ->
-   let () = Feedback.msg_info (Pp.str "inside param") in
    let c_mind_arg = args.(0) in 
    let c_mind_cons = args.(1) in
    let (c_mind, c_mind_args) = 
@@ -1452,18 +1446,10 @@ let rec owtranslate env sigma c = match EConstr.kind sigma c with
        raise Not_found
    in
    let (mind,_) = EConstr.destInd sigma c_mind in
-   let () = Feedback.msg_info (Pp.str "----") in
    let (sigma, t_type) = Typing.type_of env.wenv_src sigma c_mind in
-   let () = Feedback.msg_info (Pp.str "$$$$") in
-   let () = Feedback.msg_info (Pp.str "####") in
    let (sigma, c_minde) = otranslate_type (wproject env) sigma c_mind in
    let (cst_gen, cst_param) = get_wparam_cst env mind in
    let (sigma, cst_param)= apply_gen_wglobal env cst_gen sigma cst_param in
-   (*applist (c_minde, mind_argse) in*)
-   let (ind_gen, (ind_param, n_ind as ind)) = get_wparam_ind env mind in
-   let (sigma, ind_param) = apply_gen_wglobal env ind_gen sigma (IndRef ind) in
-   let () = Feedback.msg_info (Pp.str "cst: " ++ Printer.pr_econstr cst_param) in
-   let () = Feedback.msg_info (Pp.str "ind: " ++ Printer.pr_econstr ind_param) in
    let fold t (sigma, accum) =
      let (sigma, t_) = otranslate (wproject env) sigma t in
      let t_ = wlift env t_ in
@@ -1472,16 +1458,10 @@ let rec owtranslate env sigma c = match EConstr.kind sigma c with
    let (sigma, mind_argse) = List.fold_right fold c_mind_args (sigma, []) in
    let (sigma, t_minde) =  otranslate (wproject env) sigma c_mind_cons in
    let t_minde = wlift env t_minde in
-   let () = Feedback.msg_info (Printer.pr_econstr t_minde) in
    let param_term = applist (cst_param, mind_argse @ [t_minde]) in
-   let () = Feedback.msg_info (Pp.str "Full term -> " ++ Printer.pr_econstr param_term) in
    let (sigma,_) = Typing.type_of env.wenv_wtgt sigma param_term in
-   let () = Feedback.msg_info (Pp.str "Term check") in
    (sigma, param_term)
 | App (t, args) ->
-   let () = try Feedback.msg_info (Pp.str "App" ++ Printer.pr_econstr t) 
-            with Not_found -> ()
-   in
    let args = Array.to_list args in
    let (sigma, tw) = owtranslate env sigma t in
    let is_primitive = 
@@ -1584,7 +1564,7 @@ and owtranslate_type env sigma c = match EConstr.kind sigma c with
    let (sigma, cr) = owtranslate env sigma c in
    (sigma, mkApp (Vars.lift 1 cr, [| mkRel 1 |]))
      
-and owtranslate_context env sigma weakly_end = function 
+and owtranslate_context env sigma weakly_end = function
 | [] -> sigma, env, []
 | LocalAssum (na, t) :: params ->
    let (sigma, env, ctx) = owtranslate_context env sigma weakly_end params in
@@ -1799,11 +1779,6 @@ let wtranslate_primitive_record env sigma mutind mind_d mind_e =
   let gen, ind_ = get_ind (wproject env) (mutind, 0) in
   let (sigma, (ind_, u)) = Evd.fresh_inductive_instance env.wenv_wtgt sigma ind_ in
   let ind_ = mkIndU (ind_, EInstance.make u) in
-  (*let make_arg (n, accu) = function
-    | LocalAssum _ -> (succ n, mkRel (2 * n) :: accu)
-    | LocalDef _ -> (succ n, accu)
-  in
-  let (_, args) = List.fold_left make_arg (1, []) mind_d.mind_params_ctxt in*)
   let init_record_params i decl = 
     let rel = wdebruijn_lookup env.wcontext (i+1) in
     let rel = match decl with Simple -> rel | Double -> rel + 1 in 
@@ -1914,6 +1889,7 @@ let concretize_mind sigma env ind nparams ntypes constructor  =
   (!sigma, constructor)
 
 let param_constr err env sigma gen ind ind_trans mind_d mind_e one_d one_e =
+  let gen_exc = match err with Some _ -> false | None -> true in
   let make_arg (n, accu) = function
     | LocalAssum _ -> (succ n, mkRel n :: accu)
     | LocalDef _ -> (succ n, accu)
@@ -1932,36 +1908,31 @@ let param_constr err env sigma gen ind ind_trans mind_d mind_e one_d one_e =
     let var = nparams + length_cons_args_ctxt in 
     let cons_param_args = List.init nparams (fun i -> mkRel (var - i)) in 
     let cons_args = cons_param_args @ cons_args in
-    let gen_exc = gen in
     (** This generic clause is for the weakly, it should be checked the inner (or received) *)
-    let cons_args = if gen_exc then mkRel e :: cons_args else cons_args in
+    let cons_args = if gen then mkRel e :: cons_args else cons_args in
     let n_cons_ind_trans = (ind_trans, m) in
     let tgt = env.env_tgt in 
     let (sigma, (n_cons_ind, u)) = Evd.fresh_constructor_instance tgt sigma n_cons_ind_trans in
     let n_cons_ind = mkConstructU (n_cons_ind, EInstance.make u) in 
     let cons_exc = applist (n_cons_ind, cons_args) in
 
-    let () = Feedback.msg_info (Printer.pr_econstr cons) in
-    let cons_args = 
-      match EConstr.kind sigma cons with
-      | App (_,args) -> Array.to_list args
-      | _ -> []
+    let cons_args = if EConstr.isApp sigma cons 
+                    then Array.to_list (snd (EConstr.destApp sigma cons)) 
+                    else [] 
     in
     let (sigma, cons_args_trans) = List.fold_map (fun s t -> otranslate env s t) sigma cons_args in 
-    let cons_args_trans = if gen then mkRel e :: cons_args_trans else cons_args_trans in 
+    let cons_args_trans = if gen_exc then mkRel e :: cons_args_trans else cons_args_trans in 
     
     let cons_app = mkRel (e + ntypes - (snd ind)) in
     let cons_term = applist (cons_app, cons_args_trans @ [cons_exc]) in
     let cons_term = it_mkProd_or_LetIn cons_term cons_trans_ctxt in
-    let () = Feedback.msg_info (Printer.pr_econstr cons_term) in
     (sigma, cons_term)
   in
   let constructors = (List.mapi (fun i c -> (i+1,c)) one_e.mind_entry_lc) in
   let (sigma, lc) = List.fold_map map sigma constructors in
-  let () = Feedback.msg_info (Pp.str "********") in
   (sigma, lc)
     
-let param_ind err env sigma (block, n as ind) mind_d mind_e one_d one_e =
+let param_inductive err env sigma (block, n as ind) mind_d mind_e one_d one_e =
   let typename = wtranslate_param_name one_e.mind_entry_typename in
   let mind_arity_ctxt = List.map EConstr.of_rel_decl one_d.mind_arity_ctxt in
   let nindices = List.length one_d.mind_arity_ctxt - List.length mind_d.mind_params_ctxt in
@@ -1985,7 +1956,6 @@ let param_ind err env sigma (block, n as ind) mind_d mind_e one_d one_e =
   let consnames = List.map wtranslate_param_name one_e.mind_entry_consnames in 
   let (sigma, lc) = param_constr err env sigma gen ind ind_trans mind_d mind_e one_d one_e in
   let lc = List.map (fun c -> EConstr.to_constr sigma c) lc in
-  let () = Feedback.msg_info (Printer.pr_econstr arity) in
 
   let ind = { one_e with
     mind_entry_typename = typename;
@@ -1995,7 +1965,7 @@ let param_ind err env sigma (block, n as ind) mind_d mind_e one_d one_e =
   } in
   (sigma, ind)  
     
-let param_inductive err translator env block mind_d mind_e =
+let param_mutual_inductive err translator env block mind_d mind_e =
   let sigma = Evd.from_env env in
   let (sigma, env) = make_context err translator env sigma in
 
@@ -2004,15 +1974,12 @@ let param_inductive err translator env block mind_d mind_e =
   let inds = List.combine (Array.to_list mind_d.mind_packets) mind_e.mind_entry_inds in
   let inds = List.mapi (fun i (l,r) -> (i,l,r)) inds in
   let map sigma (n, ind_d, ind_e) =
-    param_ind err env sigma (block, n) mind_d mind_e ind_d ind_e
+    param_inductive err env sigma (block, n) mind_d mind_e ind_d ind_e
   in
-  let () = Feedback.msg_info (Pp.str "In param block previous of induction") in 
   let (sigma, param_inds) = List.fold_map map sigma inds in
 
   let wenv_context = EConstr.rel_context env.env_tgt in
-  let () = Feedback.msg_info (Pp.str "In param block previous eUtil") in 
   let sigma, inds, params = EUtil.retype_inductive env.env_tgt sigma wenv_context param_inds in
-  let () = Feedback.msg_info (Pp.str "In param block post eUtil") in 
   let params = List.map to_local_entry params in
   let uctx = UState.context (Evd.evar_universe_context sigma) in
   let univs = match mind_e.mind_entry_universes with
@@ -2029,12 +1996,10 @@ let param_inductive err translator env block mind_d mind_e =
 
 let param_definition_ind err env sigma full_args mind_d mind_e one_d one_e param_decl_trans =
   let ((block, (wgen, wblock)), n) = full_args in
-  let () = Feedback.msg_info (Pp.str "..........") in
   let mind_arity_ctxt = List.map EConstr.of_rel_decl one_d.mind_arity_ctxt in
   let nindices = List.length one_d.mind_arity_ctxt - List.length mind_d.mind_params_ctxt in
   let index_ctxt, _ = List.chop nindices mind_arity_ctxt in
   let (sigma, env, arity_ctx') = otranslate_context env sigma index_ctxt in
-  let () = Feedback.msg_info (Pp.str "*************") in
   let args = arity_ctx' @ param_decl_trans in
   let gen, ind_trans = get_ind env (block, n) in
   let (sigma, (ind_, u)) = Evd.fresh_inductive_instance env.env_tgt sigma ind_trans in
@@ -2045,13 +2010,11 @@ let param_definition_ind err env sigma full_args mind_d mind_e one_d one_e param
   let cind_trans = applist (cind_trans, ind_trans_args) in 
   let ind_trans_decl = LocalAssum (Anonymous, cind_trans) in
   let args = ind_trans_decl :: args in 
-  
 
   let (sigma, args) = 
     let e = mkRel (List.length args + 1) in 
     let ind_trans_args = List.map (fun i -> Vars.lift 1 i) ind_trans_args in
     
-    let () = Feedback.msg_info (Names.MutInd.print block) in
     let (sigma, (wind_, u)) = Evd.fresh_inductive_instance env.env_tgt sigma ind_trans in
     let wind_ = mkIndU (wind_, EInstance.make u) in  
     let wind_ = if gen then mkApp (wind_, [| e |]) else wind_ in
@@ -2069,14 +2032,11 @@ let param_definition_ind err env sigma full_args mind_d mind_e one_d one_e param
     let c_param_e = mkApp (c_param_e, [|e; var; mkRel 1|]) in
     let (sigma, c_el) = fresh_global env sigma el_e in
     let c_el = mkApp (c_el, [| e; c_param_e |]) in
-    let () = Feedback.msg_info (Pp.str "param " ++ Printer.pr_econstr c_el) in
     (sigma, LocalAssum (Anonymous, c_el) :: args)
   in
   
-  let () = Feedback.msg_info (Pp.str "<-- (" ++ MutInd.print wblock ++ Pp.str "-" ++ Pp.int n) in
   let (sigma, (wind_, u)) = Evd.fresh_inductive_instance env.env_tgt sigma (wblock, n) in
   let wind_trans = mkIndU (wind_, EInstance.make u) in  
-  let () = Feedback.msg_info (Pp.str "---> " ++ Printer.pr_econstr wind_trans) in
   let ind_trans_args = mkRel (nargs + 1) :: ind_trans_args in
   let ind_trans_args = if wgen then mkRel (nargs + 2) :: ind_trans_args else ind_trans_args in
   let ind_inner_param = (applist (wind_trans, ind_trans_args)) in
@@ -2084,9 +2044,7 @@ let param_definition_ind err env sigma full_args mind_d mind_e one_d one_e param
   let param_def = it_mkLambda_or_LetIn  ind_inner_param args in
   let decl = get_exception env in
   let param_def = mkLambda_or_LetIn decl param_def in
-  let () = Feedback.msg_info (Pp.str "**>" ++ Printer.pr_econstr param_def) in
   let (sigma, _) = Typing.type_of env.env_tgt sigma param_def in
-  let () = Feedback.msg_info (Printer.pr_econstr param_def) in
   (sigma, param_def)
 
 let param_definition err translator env (block, wblock) mind_d mind_e =
@@ -2104,7 +2062,4 @@ let param_definition err translator env (block, wblock) mind_d mind_e =
     param_definition_ind err env sigma full_args mind_d mind_e ind_d ind_e param_decl_trans
   in
   let (sigma, param_inds) = List.fold_map map sigma inds in
-  (*
-  let () = List.fold_left (fun _ d -> Feedback.msg_info (Printer.pr_econstr d)) () param_inds in
-   *)
   (sigma, param_inds)

@@ -243,3 +243,5 @@ let primitive_record mind =
   match mind.mind_record with
   | Some (Some _) -> true
   | _ -> false
+
+

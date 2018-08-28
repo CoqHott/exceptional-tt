@@ -25,6 +25,8 @@ Inductive param_eq' (E: Type) (A: @El E Typeᵉ) (x: @El E A):
 param_eq_refl': param_eq' _ _ _ _ (eq_reflᵉ E A x). Print param_eq'.
 
 Inductive dd: nat -> Set := ddd: dd 1.
+
+
 Weakly List Translate nat. Print param_nat.
 Weakly List Translate eq. Print param_eq.
 
@@ -40,15 +42,15 @@ Definition gg: forall (x: dd 0), param x -> x = x := fun _ _ => eq_refl.
 Print gg. (* forall x : dd 4, @param (dd 4) x -> x = x *)
 Effect List Translate dd hh gg. Print ggᵉ.
 Parametricity List Translate dd hh gg. Print ggᴿ. Check paramᵉ.
-Weakly Translate dd. Check paramᵉ. 
-Weakly Translate hh.
+Weakly Translate dd. Print param_ind_nat.
+Weakly Translate hh. Print hhᵂ.
 
 Weakly List Translate even.
 Weakly List Translate unit.
 Weakly List Translate list. 
 
 Weakly List Translate p.
-Weakly List Translate eq. Print param_ind_nat.
+
 Weakly List Translate True.
 Weakly List Translate False.
 Weakly List Translate eq_ind.
@@ -56,12 +58,25 @@ Weakly List Translate False_ind.
 Weakly List Translate le.
 Weakly List Translate lt.
 
-
-
-
-
 Effect Definition raise: forall A, A using unit.
 Proof. exact (fun A => Err A tt). Defined.
+
+
+Definition test: forall (n:nat), param n -> n = raise nat -> False := raise _.
+Effect Translate test using unit.
+Weakly Definition test using unit.
+Proof.
+  intros. 
+  destruct n.
+  - inversion X2.
+  - inversion X2.
+  - inversion X0.
+Defined. Print testᵂ.
+
+Effect Definition test: forall (n:nat), param n -> n = raise nat -> False using unit.
+Proof. exact (raise _). Defined.
+Weakly Translate test using unit.
+Proof. 
 
 Definition pred (n: nat) : nat :=
   match n with
@@ -71,12 +86,13 @@ Definition pred (n: nat) : nat :=
 
 Effect Translate pred using unit.
 
+(*
 Definition param_nat: nat -> Prop := fun _ => True.
 Effect Translate param_nat.
 (* Proof. intros E n. exact (TypeVal E (Trueᵒ E) (Trueᴱ E)). Defined. *)
 Weakly Definition param_nat.
 Proof. intros E n Hn. exact (natᵂ E n). Defined.
-
+*)
 Definition param_fun_nat: (nat -> nat) -> Prop := fun f => forall n, param_nat (f n).
 Effect Translate param_fun_nat.
 (* Proof. intros E n. exact (TypeVal E (Trueᵒ E) (Trueᴱ E)). Defined. *)

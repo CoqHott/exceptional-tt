@@ -443,15 +443,13 @@ let wtranslate_constant err translator cst ids =
   [ExtConstant (cst, ConstRef cst_)]
     
 let instantiate_parametric_modality err translator (name, n) ext  =
-  let open Declarations in 
   let env = Global.env () in
   let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
 
   let mind' = EUtil.process_inductive mind in
-  let mind_ = ETranslate.param_inductive err translator env name mind mind' in
+  let mind_ = ETranslate.param_mutual_inductive err translator env name mind mind' in
   let ((_, kn), _) = Declare.declare_mind mind_ in
   let ind_ = Global.mind_of_delta_kn kn in
-  let () = Feedback.msg_info (Pp.str "|||||||||||||||||||||||||||||||||||||||||||||") in
 
   let env = Global.env () in
   let (sigma, params) = ETranslate.param_definition err translator env (name, ind_) mind mind' in
@@ -547,12 +545,3 @@ let list_ptranslate ?exn gr_list =
   generic_translate ?exn gr_list ptranslate
 let list_wtranslate ?exn gr_list = 
   generic_translate ?exn gr_list wtranslate
-
-(*
-let () = 
-  let effect_path = DirPath.make (List.map Id.of_string ["Effects"; "Weakly"]) in
-  let ids = List.map Id.of_string ["effect_default"; "param"] in
-  let qualids = List.map (fun d -> Libnames.make_qualid effect_path d) ids in
-  let references = List.map (fun d -> Libnames.Qualid (None, d)) qualids in
-  list_translate references
- *)
