@@ -25,6 +25,9 @@ end.
 Definition Typeᵉ@{i j k} (E : Type@{i}) : type@{i k} E :=
   TypeVal E (type@{i j} E) (TypeErr E).
 
+Definition Propᵉ@{i j} (E: Type@{i}): type@{i j} E :=
+  TypeVal E Prop (fun _ => True).
+
 Arguments Typeᵉ {_}.
 
 Definition Prodᵉ@{i j k l} (E : Type@{i}) (A : Type@{j})
@@ -37,7 +40,9 @@ Cumulative Inductive prop@{i} (E : Type@{i}) : Type :=
 | pTypeVal : forall (A : Prop), (E -> A) -> prop E
 | pTypeErr : E -> prop E.
 
+(*
 Definition Propᵉ@{i k} (E : Type@{i}) := TypeVal@{i k} E (prop E) (pTypeErr E).
+*)
 
 Definition pEl@{i} {E : Type@{i}} (A : prop E) : Prop:=
 match A with

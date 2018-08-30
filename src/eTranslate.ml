@@ -120,7 +120,7 @@ let effect_path =
 let make_kn name =
   KerName.make2 (MPfile effect_path) (Label.make name)
 
-(* let prop_e = ConstRef (Constant.make1 (make_kn "Propᵉ")) *)
+let prop_e = ConstRef (Constant.make1 (make_kn "Propᵉ"))
 let type_e = ConstRef (Constant.make1 (make_kn "Typeᵉ"))
 let el_e = ConstRef (Constant.make1 (make_kn "El"))
 let prod_e = ConstRef (Constant.make1 (make_kn "Prodᵉ"))
@@ -229,10 +229,16 @@ let pfresh_global env sigma gr =
 
 (** Effect translation core *)
 
-let element env sigma c =
-  let (sigma, el) = fresh_global env sigma el_e in
-  let e = mkRel (Environ.nb_rel env.env_tgt) in
-  (sigma, mkApp (el, [|e; c|]))
+let element env sigma is_prop c =
+  let (sigma, value) = 
+    if is_prop then 
+      (sigma, c)
+    else
+      let (sigma, el) = fresh_global env sigma el_e in
+      let e = mkRel (Environ.nb_rel env.env_tgt) in
+      (sigma, mkApp (el, [|e; c|]))
+  in
+  (sigma, value)
 
 let translate_case_info env sigma ci mip =
   let gen, ci_ind = get_ind env ci.ci_ind in
@@ -291,7 +297,9 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   (sigma, mkRel n)
 | Sort s ->
   let e = mkRel (Environ.nb_rel env.env_tgt) in
-  let (sigma, t) = fresh_global env sigma type_e in
+  let is_prop = is_prop_sort (EConstr.ESorts.kind sigma s) in
+  let sort_e = if is_prop then prop_e else type_e in
+  let (sigma, t) = fresh_global env sigma sort_e in
   sigma, mkApp (t, [|e|])
 | Cast (c, k, t) ->
   let (sigma, ce) = otranslate env sigma c in
@@ -418,8 +426,9 @@ and otranslate_type env sigma t = match EConstr.kind sigma t with
   let (sigma, ue) = otranslate_type env sigma u in
   (sigma, mkProd (na, te, ue))
 | _ ->
+  let is_prop = is_prop_sort (Typing.e_sort_of env.env_src (ref sigma) t) in
   let (sigma, t_) = otranslate env sigma t in
-  let (sigma, t_) = element env sigma t_ in
+  let (sigma, t_) = element env sigma is_prop t_ in
   (sigma, t_)
 
 (* From Γ ⊢ A : Type produce
@@ -447,20 +456,29 @@ and otranslate_type_and_err env sigma t = match EConstr.kind sigma t with
   let prod_def = mkLambda (Name name_err, e, mkLambda (na, Vars.lift 1 te, def)) in
   (sigma, mkProd (na, te, ue), prod_def)
 | _ ->
+  let is_prop = is_prop_sort (Typing.e_sort_of env.env_src (ref sigma) t) in
   let (sigma, t_) = otranslate env sigma t in
   let (sigma, err) = fresh_global env sigma err_e in
   let e = mkRel (Environ.nb_rel env.env_tgt) in
   let t_def = mkApp (err, [|e; t_|]) in
-  let (sigma, t_) = element env sigma t_ in
+  let (sigma, t_) = element env sigma is_prop t_ in
   (sigma, t_, t_def)
 
 (** Special handling of potentially partially applied inductive types not to
     clutter the translation *)
 and otranslate_ind env sigma (ind, u) args =
   let (mib, mip) = Inductive.lookup_mind_specif env.env_src ind in
+  let is_prop = 
+    match mip.mind_arity with
+    | RegularArity ar -> is_prop_sort ar.mind_sort
+    | TemplateArity _ -> false
+  in
   let fold sigma c = otranslate env sigma c in
   let (sigma, args) = Array.fold_map fold sigma args in
-  if Inductive.is_primitive_record (mib, mip) then
+  if is_prop then
+    let (sigma, c) = apply_global env sigma (IndRef ind) in
+    (sigma, if Array.length args == 0 then c else mkApp (c, args))
+  else if Inductive.is_primitive_record (mib, mip) then
     (** Primitive default constructor 
         This is wrong *)
     let e_var = mkRel (Environ.nb_rel env.env_tgt) in
@@ -774,7 +792,10 @@ let get_pexception env =
 
 let translate err translator env0 sigma c =
   let (sigma, env) = make_context err translator env0 sigma in
+  let () = Feedback.msg_info (Pp.str "pre translated") in 
+  let () = Feedback.msg_info (Printer.pr_econstr c) in 
   let (sigma, c_) = otranslate env sigma c in
+  let () = Feedback.msg_info (Pp.str "poste translated") in 
   let decl = get_exception env in
   let c_ = mkLambda_or_LetIn decl c_ in
   let (sigma, _) = Typing.type_of env.env_src sigma c_ in
@@ -887,11 +908,15 @@ let translate_constructors env sigma mind0 mind ind0 ind =
 
 let translate_inductive_body env sigma mind0 mind n ind0 ind =
   let typename = translate_internal_name ind.mind_entry_typename in
+  let is_prop = try is_prop_sort (snd (Reduction.dest_arity env.env_src ind.mind_entry_arity))
+                with Reduction.NotArity -> false
+  in
   let constructors = List.map translate_name ind.mind_entry_consnames in
   let nindices = List.length ind0.mind_arity_ctxt - List.length mind0.mind_params_ctxt in 
   let arity_ctx, _ = List.chop nindices ind0.mind_arity_ctxt in
   let (sigma, arity_env, arity_ctx') = otranslate_context env sigma (List.map EConstr.of_rel_decl arity_ctx) in
-  let (sigma, sort) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.env_tgt sigma InType in
+  let inSort = if is_prop then InProp else InType in
+  let (sigma, sort) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.env_tgt sigma inSort in
   let arity = it_mkProd_or_LetIn (mkSort sort) arity_ctx' in
   let (sigma, _) = Typing.type_of env.env_tgt sigma arity in
   let (sigma, lc) = translate_constructors env sigma mind0 mind ind0 ind in
@@ -902,16 +927,23 @@ let translate_inductive_body env sigma mind0 mind n ind0 ind =
   | LocalDef _ -> (succ n, accu)
   in
   (** FIXME, probably wrong indices for mutual inductive blocks *)
-  let (_, fail_args) = List.fold_left fail_arg (2, []) (Environ.rel_context arity_env.env_tgt) in
-  let n = 1 + (mind0.mind_ntypes - n) + Environ.nb_rel arity_env.env_tgt in
-  let fail_case = applist (mkRel n, fail_args) in
-  let fail_ctx = LocalAssum (Anonymous, mkRel (1 + List.length ind0.mind_arity_ctxt)) :: arity_ctx' in
-  let fail_case = it_mkProd_or_LetIn fail_case fail_ctx in
+  let (arity, fail_name_list, fail_case_list) = 
+    let arity = EConstr.to_constr sigma arity in
+    if not is_prop then 
+      let (_, fail_args) = List.fold_left fail_arg (2, []) (Environ.rel_context arity_env.env_tgt) in
+      let n = 1 + (mind0.mind_ntypes - n) + Environ.nb_rel arity_env.env_tgt in
+      let fail_case = applist (mkRel n, fail_args) in
+      let fail_ctx = LocalAssum (Anonymous, mkRel (1 + List.length ind0.mind_arity_ctxt)) :: arity_ctx' in
+      let fail_case = it_mkProd_or_LetIn fail_case fail_ctx in
+      (arity, [fail_name], [EConstr.to_constr sigma fail_case])
+    else
+      (arity, [], [])
+  in
   let ind = { ind with
     mind_entry_typename = typename;
-    mind_entry_arity = EConstr.to_constr sigma arity;
-    mind_entry_consnames = constructors @ [fail_name];
-    mind_entry_lc = lc @ [EConstr.to_constr sigma fail_case];
+    mind_entry_arity = arity;
+    mind_entry_consnames = constructors @ fail_name_list;
+    mind_entry_lc = lc @ fail_case_list;
   } in
   (sigma, ind)
 

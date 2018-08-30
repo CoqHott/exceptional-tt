@@ -1,6 +1,34 @@
 
 Require Import Weakly.Effects.
 
+Effect Translate True. Print Trueᵒ.
+
+Definition g := True.
+Effect Translate g. Translate gᵉ.
+
+Effect Translate nat. Print natᵒ.
+Effect Translate eq. Print eqᵒ.
+
+Theorem test: forall (n: nat), Prop. Proof. intros; exact (n = n). Defined.
+Effect Translate test. Print testᵉ.
+
+
+Inductive eq_e (E: Type) (A: @El E (@Typeᵉ E)) (a: @El E A): @El E A -> Prop :=
+eq_refl_e : eq_e E A a a.
+
+Check fun (E: Type) (A: @El E (@Typeᵉ E)) (a b: @El E A) => eq_e E A a b.
+
+Inductive list_E (E: Type) (A: @El E Typeᵉ): Type :=
+| nil_E: list_E E A
+| cons_E: forall (a: El A), list_E E A -> list_E E A.
+
+Inductive list_param (E: Type) (A: @El E Typeᵉ): list_E E A -> Prop :=
+| nil_param : list_param E A (nil_E E A)
+| cons_param : forall (a: El A) (l: list_E E A), list_param E A l -> list_param E A (cons_E E A a l).
+
+Definition gg := forall (A: Type), Prop.
+Effect Translate gg. Print ggᵉ.
+
 Inductive p : nat -> Type := d: p 0 | l: p 1 -> p 2.
 
 Inductive k (E: Type): Type -> nat -> Type := kk: k E bool 0. Check kk unit.
