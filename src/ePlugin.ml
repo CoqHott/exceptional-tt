@@ -267,9 +267,30 @@ let translate_inductive_gen f err translator (ind, _) =
   in
   (ExtInductive (ind, ind_)) :: extensions
 
-let translate_inductive err translator ind =
-  translate_inductive_gen ETranslate.translate_inductive err translator ind
+let instantiate_parametric_modality err translator (name, n) ext  =
+  let env = Global.env () in
+  let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
+  
+  let name_e = List.find_map
+                 (fun d -> 
+                   match d with 
+                   | ExtInductive (n,m) when MutInd.equal name n -> Some m 
+                   | _ -> None ) 
+                 ext
+  in
+  let mind' = EUtil.process_inductive mind in
+  let mind_ = ETranslate.param_mutual_inductive err translator env (name, name_e) mind mind' in
+(*
+  let ((_, kn), _) = Declare.declare_mind mind_ in
+  let ind_ = Global.mind_of_delta_kn kn in *)
+  ()
 
+
+let translate_inductive err translator ind =
+  let base_ext = translate_inductive_gen ETranslate.translate_inductive err translator ind in
+  let () = instantiate_parametric_modality err translator ind base_ext in
+  base_ext
+                          
 let ptranslate_inductive err translator ind =
   translate_inductive_gen ETranslate.ptranslate_inductive err translator ind
 
@@ -442,12 +463,12 @@ let wtranslate_constant err translator cst ids =
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (cst, ConstRef cst_)]
     
-let instantiate_parametric_modality err translator (name, n) ext  =
+let instantiate_wparametric_modality err translator (name, n) ext  =
   let env = Global.env () in
   let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
 
   let mind' = EUtil.process_inductive mind in
-  let mind_ = ETranslate.param_mutual_inductive err translator env name mind mind' in
+  let mind_ = ETranslate.wparam_mutual_inductive err translator env name mind mind' in
   let ((_, kn), _) = Declare.declare_mind mind_ in
   let ind_ = Global.mind_of_delta_kn kn in
 
@@ -471,7 +492,7 @@ let instantiate_parametric_modality err translator (name, n) ext  =
     
 let wtranslate_inductive err translator ind =
   let ext = translate_inductive_gen ETranslate.wtranslate_inductive err translator ind in 
-  let param_ext = instantiate_parametric_modality err translator ind ext in
+  let param_ext = instantiate_wparametric_modality err translator ind ext in
   ext @ param_ext
                           
 let wtranslate ?exn ?names gr =

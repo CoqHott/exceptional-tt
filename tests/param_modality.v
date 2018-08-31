@@ -1,16 +1,33 @@
 
 Require Import Weakly.Effects.
 
+Effect Translate nat.
+
+
+Effect List Translate nat bool. Parametricity List Translate nat bool.
+
+Inductive h : Type :=
+kk: forall (f: Type -> Type), f h -> h.
+
+
+Inductive t (A:Type): Type :=
+| dd: (fun _ => t A) nat
+| gg: nat -> (nat -> (bool -> (bool -> nat -> t A))) -> t A
+| ff: t A -> t A. 
+
+Effect Translate t. Parametricity Translate t. Print tᴿ.
+
+
 Effect Translate True. Print Trueᵒ.
 
-Definition g := True.
-Effect Translate g. Translate gᵉ.
+Definition g := True. 
+Effect Translate g. Print gᵉ.
 
 Effect Translate nat. Print natᵒ.
 Effect Translate eq. Print eqᵒ.
 
 Theorem test: forall (n: nat), Prop. Proof. intros; exact (n = n). Defined.
-Effect Translate test. Print testᵉ.
+Effect Translate test. Print testᵉ. 
 
 
 Inductive eq_e (E: Type) (A: @El E (@Typeᵉ E)) (a: @El E A): @El E A -> Prop :=

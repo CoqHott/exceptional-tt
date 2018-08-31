@@ -64,6 +64,10 @@ val wtranslate_inductive :
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
 
 val param_mutual_inductive :
+  effect -> translator -> Environ.env -> MutInd.t * MutInd.t -> Declarations.mutual_inductive_body -> 
+    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry 
+
+val wparam_mutual_inductive :
   effect -> translator -> Environ.env -> MutInd.t-> Declarations.mutual_inductive_body -> 
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
 
