@@ -1013,37 +1013,37 @@ let term_finish_in_ind sigma t ind_name = match EConstr.kind sigma t with
   | _ -> false
                                                  
 
-let rec otranslate_param env param_env sigma ind_name c = match EConstr.kind sigma c with
+let rec otranslate_param env param_env sigma (ind, ind_e) c = match EConstr.kind sigma c with
 | Rel n ->
    let m = List.fold_left (fun a acc -> a + acc) 0 (List.firstn n param_env) in
    (sigma, mkRel m) 
 | Sort _ | Prod _ ->
-   let (sigma, c_) = otranslate_param env param_env sigma ind_name c in
+   let (sigma, c_) = otranslate_param env param_env sigma (ind, ind_e) c in
    let c_ = param_lift param_env c_ in
-   let (sigma, w) = otranslate_param_type env param_env sigma ind_name c in
+   let (sigma, w) = otranslate_param_type env param_env sigma (ind, ind_e) c in
    let w = mkLambda (Anonymous, c_, w) in
    (sigma, w)
 | Lambda (na, t, u) -> assert false
 | LetIn (na, c, t, u) ->
-   let (sigma, c_) = otranslate_param env param_env sigma ind_name c in
-   let (sigma, t_) = otranslate_param_type env param_env sigma ind_name t in
-   let is_ind_param = term_finish_in_ind sigma t ind_name in
+   let (sigma, c_) = otranslate_param env param_env sigma (ind, ind_e) c in
+   let (sigma, t_) = otranslate_param_type env param_env sigma (ind, ind_e) t in
+   let is_ind_param = term_finish_in_ind sigma t ind in
    let (sigma, ctw, param_env) =
      if is_ind_param then (sigma, (None, None), 1 :: param_env)
-     else let (s, cw) = otranslate_param env param_env sigma ind_name c in 
-          let (s, tw) = otranslate_param_type env param_env s ind_name t in
+     else let (s, cw) = otranslate_param env param_env sigma (ind, ind_e) c in 
+          let (s, tw) = otranslate_param_type env param_env s (ind, ind_e) t in
           (s, (Some cw, Some tw), 2 :: param_env)
    in 
    let nenv = push_def na (c, c_) (t, t_) env in 
    let ctx = param_top_decls nenv is_ind_param in
-   let (sigma, ur) = otranslate_param nenv param_env sigma ind_name u in
+   let (sigma, ur) = otranslate_param nenv param_env sigma (ind, ind_e) u in
    let r = it_mkLambda_or_LetIn ur ctx in
    (sigma, r)
 | App (t, args) ->
    let args = Array.to_list args in
-   let (sigma, tw) = otranslate_param env param_env sigma ind_name t in
+   let (sigma, tw) = otranslate_param env param_env sigma (ind, ind_e) t in
    let fold t (sigma, accum) = 
-     let (sigma, t_) = otranslate_param env param_env sigma ind_name t in
+     let (sigma, t_) = otranslate_param env param_env sigma (ind, ind_e) t in
      let t_ = param_lift env t_ in
      (sigma, t_ :: accum)
    in
@@ -1055,6 +1055,8 @@ let rec otranslate_param env param_env sigma ind_name c = match EConstr.kind sig
 | Const (p, _) ->
    let (sigma, c) = apply_global env sigma (ConstRef p) in
    (sigma, c)
+| Ind (ind', u) when MutInd.equal ind (fst ind') ->
+   (sigma, mkInd (ind_e, 0))
 | Ind (ind, _) ->
    let (sigma, c) = apply_global env sigma (IndRef ind) in
    (sigma, c)
@@ -1064,41 +1066,34 @@ let rec otranslate_param env param_env sigma ind_name c = match EConstr.kind sig
 | Case (ci, r, d, p) -> assert false
 | _ ->
    (sigma, c)
-and otranslate_param_type env param_env sigma ind_name c = match EConstr.kind sigma c with
+and otranslate_param_type env param_env sigma (ind, ind_e) c = match EConstr.kind sigma c with
 | Sort s ->
    otranslate_type env sigma c
 | Prod (na,t,u) ->
-   let () = Feedback.msg_info (Pp.str "++++++>") in
    let (sigma, t_) = otranslate_type env sigma t in
-   let is_ind_param = term_finish_in_ind sigma t ind_name in
+   let is_ind_param = term_finish_in_ind sigma t ind in
    let nenv = push_assum na (t, t_) env in
    let (sigma, nenv, param_env) = 
      if not is_ind_param then (sigma, nenv, 1 :: param_env)
      else let (sigma, tp) = otranslate_type env sigma t in
-          let () = Feedback.msg_info (Pp.str "************>") in
-          let () = Feedback.msg_info (Printer.pr_econstr tp) in
           let tp = Vars.lift 1 tp in
           let tp = mkApp (tp, [|mkRel 1|]) in
-          let () = Feedback.msg_info (Printer.pr_econstr tp) in
-          let () = Feedback.msg_info (Pp.str "************>") in
-          let assum = EConstr.push_rel (LocalAssum (na, tp)) env.env_tgt in
-          let nenv = { nenv with env_tgt = assum } in
-          (sigma, nenv, param_env)
-       
-   (*let (s, o) = otranslate_param_type env param_env sigma ind_name t in 
-          (s, Some o, 2 :: param_env)*)
+          let () = Feedback.msg_info (Pp.int (Environ.nb_rel nenv.env_tgt)) in
+          let assum_env = EConstr.push_rel (LocalAssum (na, tp)) nenv.env_tgt in
+          let () = Feedback.msg_info (Pp.int (Environ.nb_rel assum_env)) in
+          let new_env = { nenv with env_tgt = assum_env; } in
+          (sigma, new_env, 2 :: param_env)
    in 
-   let (sigma, uw) = otranslate_param_type nenv param_env sigma ind_name u in
+   let (sigma, uw) = otranslate_param_type nenv param_env sigma (ind, ind_e) u in
    let n = if is_ind_param then 3 else 2 in
    let uw = Vars.liftn 1 (if is_ind_param then 4 else 3) uw in
    let uw = Vars.subst1 (mkApp (mkRel n, [| mkRel (n - 1) |])) uw in
-   let () = Feedback.msg_info (Pp.bool is_ind_param) in
    let ctx = param_top_decls nenv is_ind_param in
+   let ctx = lift_rel_context 1 ctx in
    let r = it_mkProd_or_LetIn uw ctx in
-   let () = Feedback.msg_info (Pp.str "in " ++ Printer.pr_econstr r) in
    (sigma, r)
 | _ ->
-   let (sigma, cr) = otranslate_param env param_env sigma ind_name c in
+   let (sigma, cr) = otranslate_param env param_env sigma (ind, ind_e) c in
    (sigma, mkApp (Vars.lift 1 cr, [| mkRel 1 |]))
 
 let param_constr err env sigma gen (block, block_e, n) mind_d mind_e one_d one_e =
@@ -1111,25 +1106,20 @@ let param_constr err env sigma gen (block, block_e, n) mind_d mind_e one_d one_e
     let t = EConstr.of_constr t in
     let t = Vars.substnl subst0 (Environ.nb_rel env.env_src) t in
     let param_env = List.init (List.length mind_e.mind_entry_params) (fun i -> 1) in
-    let (sigma, te) = otranslate_param_type env param_env sigma block_e t in
+    let (sigma, te) = otranslate_param_type env param_env sigma (block, block_e) t in
 
     let (sigma, (c_, u)) = Evd.fresh_constructor_instance env.env_tgt sigma ((block_e,n), c) in
     let constr = mkConstructU (c_, EInstance.make u) in
-    let cons_args, _ = decompose_prod_assum sigma t in
-    let cons_args_typ = List.map (fun d -> Rel.Declaration.get_type d) cons_args in
-    let args_t = List.map (fun d -> term_finish_in_ind sigma d block_e) cons_args_typ in
-    let args_offset = List.map (fun d -> if d then 2 else 1) args_t in
-    let fold (n,acc) offset = 
-      (n + offset, mkRel (n + offset) :: acc)
-    in
-    let total_offset_args,args = List.fold_left fold (0,[]) args_offset in
+
+    let args = List.init (List.length mind_e.mind_entry_params) (fun i -> mkRel (i + 1)) in
+    let args = List.rev args in 
     let n_params = List.length mind_e.mind_entry_params in 
-    let constr = if gen then mkApp (constr, [|mkRel (total_offset_args + n_params)|]) else constr in
+    let e = n_params + 1 in
+    let constr = if gen then mkApp (constr, [|mkRel e|]) else constr in
     let constr = applist (constr, args) in
     let te = Vars.subst1 constr te in
-    let () = Feedback.msg_info (Pp.str "kkkkk>") in
-    let () = Feedback.msg_info (Printer.pr_econstr te) in
-    (*let te = abstract_mind sigma mutind nblock (Environ.nb_rel env.env_tgt) te in*)
+    let te = abstract_mind sigma block_e nblock (Environ.nb_rel env.env_tgt) te in
+    let () = Feedback.msg_info (Pp.str ">>"  ++ Printer.pr_econstr te) in
     ((succ c, sigma), te)
   in
   let ((_, sigma), lc) = List.fold_map map (1,sigma) one_e.mind_entry_lc in
