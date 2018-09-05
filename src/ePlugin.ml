@@ -274,10 +274,20 @@ let translate_inductive_gen f err translator (ind, _) =
   in
   (ExtInductive (ind, ind_)) :: extensions
 
+let one_ind_in_prop ind_arity =
+  let open Declarations in
+  match ind_arity with
+  | RegularArity ar -> is_prop_sort ar.mind_sort
+  | TemplateArity _ -> false
+  
 let instantiate_parametric_modality err translator (name, n) ext  =
   let env = Global.env () in
   let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
-  
+  let arity_mind = Array.map (fun ind -> Declarations.(ind.mind_arity) ) mind.mind_packets in
+
+  if Array.exists (fun i -> one_ind_in_prop i) arity_mind then
+    []
+  else
   let name_e = List.find_map
                  (fun d -> 
                    match d with 

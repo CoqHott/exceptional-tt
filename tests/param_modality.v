@@ -1,276 +1,153 @@
 
 Require Import Weakly.Effects.
 
-Effect Translate nat.  Effect Translate list. Print list_param. Print list_instance_0.
 
-Existing Instance list_instance_0.
+(** Here we are going to give a detailed explenation of how the new 
+    exceptional translation works. *)
 
-(* Not allowed because eq in Prop.Effect Translate eq. Print eq_param. *)
-Effect Translate bool. Print bool_param.
+(** First of all, it is important to nat that the translation behave 
+    differently when translating elements in Prop or elements in Type *)
 
-(*
-Inductive t (A:Type): Type :=
-| dd: t A
-| gg: nat -> (nat -> (bool -> (bool -> nat -> t A))) -> t A
-| ff: t A -> t A -> t A. 
+(** Prop is interpreted as (TypeVal Prop (fun _ => True)), while 
+    Type is interpreted as (TypeVale type TypeErr). This can 
+    be seen in the type of a simple translation *)
+
+(** Keep in mind that:
+    Propᵉ = TypeVal Prop (fun _ => True)
+    Typeᵉ = TypeVal type TypeErr *)
+
+Definition TypeDifference : Prop -> Type -> Type := fun _ _ => Type.
+Effect Translate TypeDifference. Check TypeDifferenceᵉ. 
+(* forall E : Type, El (Propᵉ E) -> El Typeᵉ -> El Typeᵉ =
+   forall E : Type, Prop -> type E -> El Typeᵉ *)
+
+(** This means that is not possible to raise exceptions on
+    Prop. These elements do not know how. *)
+
+(** This means that the translation of inductives is also 
+    different. For Types, it adds a default exceptional constructor
+    while for Prop it does not. *)
+
+(** The name of the new exceptional Inductive is $INDUCTIVEᵒ *)
+
+Effect Translate nat. Print natᵒ.
+(* 
+   Inductive natᵒ (E : Type) : Type :=  
+   | Oᵉ : natᵒ E 
+   | Sᵉ : natᵒ E -> natᵒ E 
+   | natᴱ : E -> natᵒ E
 *)
-Inductive t (A:Type): Type :=
-| ff: t A -> t A -> nat -> t A -> t A.
 
-Effect Translate t. Print t_param.
+Effect Translate eq. Print eqᵒ.
+(* 
+   Inductive eqᵒ (E : Type) (A : El Typeᵉ) (x : El A) : El A -> Prop :=  
+   | eq_reflᵉ : eqᵒ E A x x    
+ *)
 
-Inductive even: nat -> Type :=
-| evenO: even 0
-| evenS: forall n, odd n -> even (S n)
-with odd: nat -> Type :=
-| oddS: forall n, even n -> odd (S n).
+(** Here we can see how the translation adds a new constructor
+    for the inductives in Type, while for inductives on Prop
+    only add the exceptional layer over the terms *)
 
-Instance even_param_instance (n: nat): ParamMod (even n) := {
-  param := fun l => True
-}.
-Print even_param_instance. Locate True.
+(** It is also important that in the case that the inductive lives in 
+    the Type hierarchy, the translation generates a parametric inductive
+    and an instance for a parametric modality which in practice can be 
+    used to enforce the purity of the exceptional term *)
+
+(** The name of the parametric inductive is $INDUCTIVE_param and the 
+    name of the parametric modality is 
+    $INDUCTIVE_instance_$NUMBER_OF_INDUCTIVE_IN_BLOCK *)
+
+(** Here the parametric modality has the form of:
+      Class ParamMod (A: Type) := {
+        param := A -> Prop
+      }
+     
+   It is also important to note that this class is a primitive
+   record, which enables the translation of the param operator
+   as intended
+*)
+
+Print nat_param.
+(*
+  Inductive nat_param (E : Type) : natᵒ E -> Prop :=
+    | O_param : nat_param E (Oᵉ E) 
+    | S_param : forall H : natᵒ E, nat_param E H -> nat_param E (Sᵉ E H)
+ *)
+
+Print nat_instance_0.
+(* nat_instance_0 = {| param := fun _ : nat => True |} *)
+
+(** We actually need the instance for the parametric modality in the target
+    theory but also in the source theory. However, is not possible to enforce that 
+    the term is pure in the source theory, so the instance is choosed degenerated. 
+    Here we can see that the modality does what we want in the target theory *)
+
+Print nat_pinstance_0.
+(* nat_pinstance_0 = fun E : Type => {| paramᵉ := fun H : natᵒ E => nat_param E H |} *)
+
+(** When applying the translation, nat_instance_0 is mapped to nat_pinstance_0, thus
+    enforcing the purity of the term in the target theory *)
+
+(** Currently, these terms are not made instance of the modality but can be declared 
+    as such with *)
 
 Existing Instance nat_instance_0.
-Definition test: forall (n:nat), param n -> Type := fun _ _ => nat.
-Effect Translate test. Print testᵉ.
 
-Effect Translate even. Print even_instance_1. Print even_param.
+(** Note that is sufficient to make the source term an instance of the modality *)
 
+Effect List Translate list bool.
+Print list_param.
+(*
+  Inductive list_param (E : Type) (A : El Typeᵉ) : listᵒ E A -> Prop :=
+  | nil_param : list_param E A (nilᵉ E A)
+  | cons_param : forall (H : El A) (H0 : listᵒ E A), list_param E A H0 -> list_param E A (consᵉ E A H H0)
+ *)
 
-Effect List Translate nat bool. Parametricity List Translate nat bool.
+(** It is important to note that the generated parametric inductive is a shallow parametricity *)
 
-Inductive h : Type :=
-kk: forall (f: Type -> Type), f h -> h.
+Inductive DeepInductive : Type :=
+| def: DeepInductive
+| deep: (Type -> DeepInductive) -> DeepInductive.
 
+Effect Translate DeepInductive.
+Print DeepInductive_param.
+(*
+  Inductive DeepInductive_param (E : Type) : DeepInductiveᵒ E -> Prop :=  
+  | def_param : DeepInductive_param E (defᵉ E)
+  | deep_param : forall H : El Typeᵉ -> DeepInductiveᵒ E, DeepInductive_param E (deepᵉ E H)
+*)
 
-Inductive t (A:Type): Type :=
-| dd: (fun _ => t A) nat
-| gg: nat -> (nat -> (bool -> (bool -> nat -> t A))) -> t A
-| ff: t A -> t A. 
-
-Effect Translate t. Parametricity Translate t. Print t\u1d3f.
-
-
-Effect Translate True. Print True\u1d52.
-
-Definition g := True. 
-Effect Translate g. Print g\u1d49.
-
-Effect Translate nat. Print nat\u1d52.
-Effect Translate eq. Print eq\u1d52.
-
-Theorem test: forall (n: nat), Prop. Proof. intros; exact (n = n). Defined.
-Effect Translate test. Print test\u1d49. 
-
-
-Inductive eq_e (E: Type) (A: @El E (@Type\u1d49 E)) (a: @El E A): @El E A -> Prop :=
-eq_refl_e : eq_e E A a a.
-
-Check fun (E: Type) (A: @El E (@Type\u1d49 E)) (a b: @El E A) => eq_e E A a b.
-
-Inductive list_E (E: Type) (A: @El E Type\u1d49): Type :=
-| nil_E: list_E E A
-| cons_E: forall (a: El A), list_E E A -> list_E E A.
-
-Inductive list_param (E: Type) (A: @El E Type\u1d49): list_E E A -> Prop :=
-| nil_param : list_param E A (nil_E E A)
-| cons_param : forall (a: El A) (l: list_E E A), list_param E A l -> list_param E A (cons_E E A a l).
-
-Definition gg := forall (A: Type), Prop.
-Effect Translate gg. Print gg\u1d49.
-
-Inductive p : nat -> Type := d: p 0 | l: p 1 -> p 2.
-
-Inductive k (E: Type): Type -> nat -> Type := kk: k E bool 0. Check kk unit.
+(* The translation also support the mutual inductive definitions *)
 
 Inductive even: nat -> Type :=
 | evenZ: even 0
 | evenS: forall n, odd n -> even (S n)
-with
-odd: nat -> Type :=
+with odd: nat -> Type :=
 | oddS: forall n, even n -> odd (S n).
 
-Effect List Translate nat bool unit list p k eq True False eq_ind False_ind le lt even.
-Parametricity List Translate nat bool unit p k eq True. Print eq\u1d3f. Print k\u1d3f.
-
-(* \u1d52 \u1d49 \u1d31 \u1d3f *)
-Check @eq_refl.
-
-Print eq\u1d52. Print eq\u1d3f.
-
-Inductive param_eq' (E: Type) (A: @El E Type\u1d49) (x: @El E A): 
-                   forall (H:@El E A), eq\u1d52 E A x H -> Type :=
-param_eq_refl': param_eq' _ _ _ _ (eq_refl\u1d49 E A x). Print param_eq'.
-
-Inductive dd: nat -> Set := ddd: dd 1.
-
-
-Weakly List Translate nat. Print param_nat.
-Weakly List Translate eq. Print param_eq.
-
-Check param (@eq).
-
-Definition param_eq'': forall (A: Type) (x y: A), x = y -> Prop. 
-Proof. intros. exact True. Defined.
-Effect Translate param_eq''. Print param_eq''\u1d49.
-Parametricity Translate param_eq''. Print param_eq''\u1d3f.
-
-Definition hh: forall (x: nat), param x -> x = x := fun _ _ => eq_refl.
-Definition gg: forall (x: dd 0), param x -> x = x := fun _ _ => eq_refl.
-Print gg. (* forall x : dd 4, @param (dd 4) x -> x = x *)
-Effect List Translate dd hh gg. Print gg\u1d49.
-Parametricity List Translate dd hh gg. Print gg\u1d3f. Check param\u1d49.
-Weakly Translate dd. Print param_ind_nat.
-Weakly Translate hh. Print hh\u1d42.
-
-Weakly List Translate even.
-Weakly List Translate unit.
-Weakly List Translate list. 
-
-Weakly List Translate p.
-
-Weakly List Translate True.
-Weakly List Translate False.
-Weakly List Translate eq_ind.
-Weakly List Translate False_ind.
-Weakly List Translate le.
-Weakly List Translate lt.
-
-Effect Definition raise: forall A, A using unit.
-Proof. exact (fun A => Err A tt). Defined.
-
-
-Definition test: forall (n:nat), param n -> n = raise nat -> False := raise _.
-Effect Translate test using unit.
-Weakly Definition test using unit.
-Proof.
-  intros. 
-  destruct n.
-  - inversion X2.
-  - inversion X2.
-  - inversion X0.
-Defined. Print test\u1d42.
-
-Effect Definition test: forall (n:nat), param n -> n = raise nat -> False using unit.
-Proof. exact (raise _). Defined.
-Weakly Translate test using unit.
-Proof. 
-
-Definition pred (n: nat) : nat :=
-  match n with
-  | 0 => raise nat
-  | S n => n
-  end.
-
-Effect Translate pred using unit.
-
+Effect Translate even.
+Print even_param.
 (*
-Definition param_nat: nat -> Prop := fun _ => True.
-Effect Translate param_nat.
-(* Proof. intros E n. exact (TypeVal E (True\u1d52 E) (True\u1d31 E)). Defined. *)
-Weakly Definition param_nat.
-Proof. intros E n Hn. exact (nat\u1d42 E n). Defined.
+  Inductive even_param (E : Type) : forall H : natᵒ E, evenᵒ E H -> Prop :=
+  | evenZ_param : even_param E (Oᵉ E) (evenZᵉ E)    
+  | evenS_param : forall (n : natᵒ E) (H : oddᵒ E n), odd_param E n H -> even_param E (Sᵉ E n) (evenSᵉ E n H)
+  with odd_param (E : Type) : forall H : natᵒ E, oddᵒ E H -> Prop :=
+  | oddS_param : forall (n : natᵒ E) (H : evenᵒ E n), even_param E n H -> odd_param E (Sᵉ E n) (oddSᵉ E n H)
 *)
-Definition param_fun_nat: (nat -> nat) -> Prop := fun f => forall n, param_nat (f n).
-Effect Translate param_fun_nat.
-(* Proof. intros E n. exact (TypeVal E (True\u1d52 E) (True\u1d31 E)). Defined. *)
-Weakly Translate param_fun_nat. Print param_fun_nat\u1d42.
+Print even_pinstance_0. (* Print even_instance_1 *)
+(* even_pinstance_0 = fun (E : Type) (H : natᵒ E) => {| paramᵉ := fun H0 : evenᵒ E H => even_param E H H0 |} *)
 
-Effect Definition O_f: 0 = raise nat -> False using unit.
-Proof. simpl. intros H. inversion H. exact (False\u1d31 unit H0). Defined.
-Weakly Definition O_f using unit.
-Proof. simpl. intros H H\u1d42. inversion H\u1d42. Defined.
+(* The generated parametric inductive in this case is something to look at.
+   Currently, it ask for the parametricity proof of the other inductive, although
+   it can be relaxed *)
 
-Effect Definition S_f: forall n, S n = raise nat -> False using unit.
-Proof. simpl. intros n H. inversion H. exact (False\u1d31 unit H0). Defined.
-Weakly Definition S_f using unit.
-Proof. simpl. intros n H H\u1d42. inversion H\u1d42. Defined.
+Definition param_translation_example: forall (n: nat), param n -> Type := fun _ _ => Type.
+Effect Translate param_translation_example.
 
-Theorem what: forall n f, param_fun_nat f -> f n = raise nat -> False.
-Proof. 
-  intros n f _ H. destruct (f n).
-  - exact (O_f H).
-  - exact (S_f n0 H).
-Defined.
-Effect Translate what using unit.
-Weakly Definition what using unit.
-Proof.
-  simpl.
-  intros n f H H\u1d42 Heq Heq\u1d42. unfold param_fun_nat\u1d42 in H\u1d42.
-  assert (Q: param_nat\u1d42 unit (f n) (H n)) by (apply H\u1d42).
-  inversion Q.
-  - inversion Heq\u1d42. rewrite H2 in H1. inversion H1.
-  - inversion Heq\u1d42. rewrite H2 in H1. inversion H1.
-Defined.
+(** Enabling the print of implicits gives *)
+Set Printing Implicit.
+Check param_translation_exampleᵉ.
+(* param_translation_exampleᵉ
+     : forall (E : Type) (n : natᵒ E), @paramᵉ _ _ (nat_pinstance_0 E) n -> @El E (@Typeᵉ E) *)
 
-Theorem valid_pred: forall n, param_nat n ->  0 < n -> (pred n = raise nat -> False).
-Proof.
-  intros n Hp Hltn Heq.
-  destruct n.
-  - inversion Hltn.
-  - simpl in Heq. destruct n; [exact (O_f Heq) | exact (S_f n Heq)].
-Defined.
-
-Effect Translate valid_pred using unit.
-Fail Weakly Translate valid_pred using unit.
-Weakly Definition valid_pred using unit.
-Proof.
-  intros E n Hparam Hparam\u1d42 Hlt Hlt\u1d42 Heq Heq\u1d42.
-  destruct n.
-  - unfold lt\u1d49 in Hlt. simpl in Hlt. unfold lt\u1d42 in Hlt\u1d42. inversion Hlt\u1d42.
-  - admit.
-  - inversion Hparam\u1d42.
-  Admitted.
-
-
-
-Module ClassParamMod.
-
-Generalizable All Variables.
-
-Class ParamMod (A: Type) := {
-  param: A -> Prop
-}.
-
-Instance NatParamMod: ParamMod nat := {
-  param := fun _ => True
-}.
-(*
-Effect Translate NatParamMod.
-Weakly Definition NatParamMod.
-Proof.
-  intros E.
-  constructor.
-  simpl.
-  intros n _.
-  exact (nat\u1d42 E n).
-Defined.  
-*)
-Instance ProductParamMod {A: Type} {B: A -> Type}
-                        `{forall a, ParamMod (B a)}: ParamMod (forall (a: A), (B a)) := {
-  param := fun f => forall (a: A), param (f a)
-}.
-
-Theorem what: forall (n: nat) (f: nat -> nat), param f -> f n = raise nat -> False.
-Proof. 
-  intros n f _ H. destruct (f n).
-  - exact (O_f H).
-  - exact (S_f n0 H).
-Defined.
-(*
-Effect Translate what using unit.
-Weakly Definition what using unit.
-Proof.
-  simpl.
-  intros n f H H\u1d42 Heq Heq\u1d42. unfold param_fun_nat\u1d42 in H\u1d42.
-  assert (Q: param_nat\u1d42 unit (f n) (H n)) by (apply H\u1d42).
-  inversion Q.
-  - inversion Heq\u1d42. rewrite H2 in H1. inversion H1.
-  - inversion Heq\u1d42. rewrite H2 in H1. inversion H1.
-Defined.
-*)
-
-End ClassParamMod.
-
-
-(** See parametric modality **)
+(** That's all for the moment folks! *)
