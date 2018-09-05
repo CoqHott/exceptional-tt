@@ -95,11 +95,15 @@ Print nat_pinstance_0.
 (** Currently, these terms are not made instance of the modality but can be declared 
     as such with *)
 
-Existing Instance nat_instance_0.
+Effect Definition nat_instance : ParamMod nat.
+exact nat_pinstance_0.
+Defined. 
+
+Existing Instance nat_instance.
 
 (** Note that is sufficient to make the source term an instance of the modality *)
 
-Effect List Translate list bool.
+Effect List Translate True list bool.
 Print list_param.
 (*
   Inductive list_param (E : Type) (A : El Typeᵉ) : listᵒ E A -> Prop :=
@@ -155,3 +159,105 @@ Check param_translation_exampleᵉ.
      : forall (E : Type) (n : natᵒ E), @paramᵉ _ _ (nat_pinstance_0 E) n -> @El E (@Typeᵉ E) *)
 
 (** That's all for the moment folks! *)
+Unset Printing Implicit.
+
+Effect Translate False.
+
+Effect Definition Exception : Type.
+Proof.
+  exact (fun E : Type => TypeVal E E (@id E)).
+Defined. 
+
+Effect Definition raise : forall A, Exception -> A.
+Proof.
+  exact (fun (E:Type) (A : type E) => Err A).
+Defined. 
+
+Arguments raise [A] _.
+
+Effect Definition catch_bool : forall (P : bool -> Type), P true -> P false -> (forall e, P (raise e)) -> forall b, P b.
+Proof.
+  intros Exc P Pt Pf Perr b. destruct b.
+  - exact Pt.
+  - exact Pf.
+  - exact (Perr e).
+Defined.
+
+Scheme natᵒ_rect := Induction for natᵒ Sort Type.
+Scheme natᵒ_ind := Induction for natᵒ Sort Prop.
+
+(* Define catch eliminator on Prop and Type *)
+
+Effect Definition catch_nat : forall (P : nat -> Type) (P0 : P 0) (PS : forall n, P n -> P (S n)) (Praise : forall e, P (raise e)) (n:nat), P n.
+Proof.
+  intros Exc P P0 PS Perr n. induction n.
+  - exact P0.
+  - apply PS. auto. 
+  - exact (Perr e).
+Defined.
+
+Effect Definition catch_nat_Prop : forall (P : nat -> Prop) (P0 : P 0) (PS : forall n, P n -> P (S n)) (Praise : forall e, P (raise e)) (n:nat), P n.
+Proof.
+  intros Exc P P0 PS Perr n. induction n.
+  - exact P0.
+  - apply PS. auto. 
+  - exact (Perr e).
+Defined.
+
+(* explain how param works on nat *)
+
+Effect Definition param_nat_0 : param 0.
+Proof.
+  econstructor. 
+Defined. 
+
+Effect Definition param_nat_S : forall n, param (S n) -> param n.
+Proof.
+  intros. inversion H. exact H1. 
+Defined. 
+
+Effect Definition param_nat_raise : forall (e:Exception), param (raise e) -> False.
+Proof.
+  intros E e H. inversion H. 
+Defined. 
+
+(* Define specific eliminations: parametric for Prop, default raise for Type *)
+
+Definition nat_ind : forall (P : nat -> Prop) (P0 : P 0) (PS : forall n, P n -> P (S n)) (n:nat), param n -> P n.
+Proof.
+  intros P P0 PS n. refine (catch_nat_Prop (fun n => param n -> P n) (fun _ => P0) _ _ n). 
+  - intros. apply PS. apply H. exact (param_nat_S _ H0).
+  - intros e H. destruct (param_nat_raise e H).
+Defined.
+
+Definition nat_rect : forall (P : nat -> Type) (P0 : P 0) (PS : forall n, P n -> P (S n)) (n:nat), P n.
+Proof.
+  intros P P0 PS n. refine (catch_nat (fun n => P n) P0 PS _ n). 
+  - intros e. exact (raise e). 
+Defined.
+
+(* correctness of param for nat *)
+
+Effect Definition raise_not0 : forall (e:Exception), 0 = raise e -> False.
+Proof.
+  simpl; intros. inversion H.
+Defined. 
+
+Effect Definition raise_notS : forall (e:Exception) n, S n = raise e -> False.
+Proof.
+  simpl; intros. inversion H.
+Defined. 
+
+Definition param_correct_nat (n:nat) : param n -> forall e, n = raise e -> False.
+  intro H. refine (nat_ind (fun n => forall e : Exception, n <> raise e) _ _ n H).
+  - exact raise_not0. 
+  - clear; intros n H e. exact (raise_notS e n).
+Defined.
+
+(* dummy test *)
+
+Definition bar e : { n:nat & n = raise e} := existT _ (raise e) eq_refl.
+
+
+
+
