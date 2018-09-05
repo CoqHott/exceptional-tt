@@ -13,8 +13,12 @@ Require Import Weakly.Effects.
     be seen in the type of a simple translation *)
 
 (** Keep in mind that:
-    Propᵉ = TypeVal Prop (fun _ => True)
-    Typeᵉ = TypeVal type TypeErr *)
+      Propᵉ = TypeVal Prop (fun _ => True)
+      Typeᵉ = TypeVal type TypeErr 
+    
+    and that: 
+      El (TypeVal v e) = v
+*)
 
 Definition TypeDifference : Prop -> Type -> Type := fun _ _ => Type.
 Effect Translate TypeDifference. Check TypeDifferenceᵉ. 
@@ -24,7 +28,7 @@ Effect Translate TypeDifference. Check TypeDifferenceᵉ.
 (** This means that is not possible to raise exceptions on
     Prop. These elements do not know how. *)
 
-(** This means that the translation of inductives is also 
+(** As a consequence, the translation of inductives is also 
     different. For Types, it adds a default exceptional constructor
     while for Prop it does not. *)
 
@@ -46,7 +50,7 @@ Effect Translate eq. Print eqᵒ.
 
 (** Here we can see how the translation adds a new constructor
     for the inductives in Type, while for inductives on Prop
-    only add the exceptional layer over the terms *)
+    only add the exceptional layer over the terms/arguments/indices *)
 
 (** It is also important that in the case that the inductive lives in 
     the Type hierarchy, the translation generates a parametric inductive
