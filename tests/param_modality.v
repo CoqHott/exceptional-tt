@@ -1,24 +1,11 @@
 
 Require Import Weakly.Effects.
 
-Class ParamMod (A: Type) := {
-  param : A -> Prop
-}.
+Effect Translate nat.  Effect Translate list. Print list_param. Print list_instance_0.
 
-Instance nat_param_instance: ParamMod (nat) := {
-  param := fun l => True
-}.
-Print nat_param_instance.
+Existing Instance list_instance_0.
 
-Instance list_param_instance (A: Type): ParamMod (list A) := {
-  param := fun l => True
-}.
-Print list_param_instance.
-
-Check forall (A: Type) (l: list A), param l -> True.
-
-Effect Translate nat.  Effect Translate list. Print list_param.
-Effect Translate eq. Print eq_param.
+(* Not allowed because eq in Prop.Effect Translate eq. Print eq_param. *)
 Effect Translate bool. Print bool_param.
 
 (*
@@ -43,7 +30,11 @@ Instance even_param_instance (n: nat): ParamMod (even n) := {
 }.
 Print even_param_instance. Locate True.
 
-Effect Translate even. Print even_param.
+Existing Instance nat_instance_0.
+Definition test: forall (n:nat), param n -> Type := fun _ _ => nat.
+Effect Translate test. Print testᵉ.
+
+Effect Translate even. Print even_instance_1. Print even_param.
 
 
 Effect List Translate nat bool. Parametricity List Translate nat bool.

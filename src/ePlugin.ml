@@ -32,8 +32,8 @@ type translator = ETranslate.translator
 
 let empty_translator = 
   let open ETranslate in 
-  let refss =  Cmap.empty in
-  let inds = Mindmap.empty in
+  let refss = Cmap.add param_cst (GlobGen (ConstRef param_cst_e)) Cmap.empty in
+  let inds = Mindmap.add param_mod (GlobGen param_mod_e) Mindmap.empty in
   let prefs = Cmap.empty in
   let pinds = Mindmap.empty in
   {
@@ -173,6 +173,13 @@ let declare_constant id uctx c t =
   let cst_ = Declare.declare_constant id decl in
   cst_
 
+let declare_constant_wo_ty id uctx c = 
+  let ce = Declare.definition_entry ~univs:uctx c in
+  let cd = Entries.DefinitionEntry ce in
+  let decl = (cd, IsProof Lemma) in
+  let cst_ = Declare.declare_constant id decl in
+  cst_
+
 let on_one_id f ids cst = match ids with
 | None -> f (Nametab.basename_of_global (ConstRef cst))
 | Some [id] -> id
@@ -288,19 +295,27 @@ let instantiate_parametric_modality err translator (name, n) ext  =
   let map i one_e =
     let func = ETranslate.param_instance_inductive in
     let names = (name, name_e, name_param) in
+
     let (sigma, instance, pinstance) = func err translator env names (one_e,i) in 
-    ()
+    let id = Label.to_string (MutInd.label name) ^ "_instance_" ^ string_of_int i in
+    let id = Id.of_string id in
+    let uctx = UState.context (Evd.evar_universe_context sigma) in
+    let t = EConstr.to_constr sigma instance in
+    let instance_name = declare_constant_wo_ty id uctx t in
+
+    let pid = Label.to_string (MutInd.label name) ^ "_pinstance_" ^ string_of_int i in
+    let pid = Id.of_string pid in
+    let tp = EConstr.to_constr sigma pinstance in
+    let pinstance_name = declare_constant_wo_ty pid uctx tp in
+    ExtConstant (instance_name, ConstRef pinstance_name)
   in
-  let _ = List.map_i map 0 (Array.to_list Declarations.(mind.mind_packets)) in
-  ()
-
-
-
+  let instances = List.map_i map 0 (Array.to_list Declarations.(mind.mind_packets)) in
+  instances
 
 let translate_inductive err translator ind =
   let base_ext = translate_inductive_gen ETranslate.translate_inductive err translator ind in
-  let () = instantiate_parametric_modality err translator ind base_ext in
-  base_ext
+  let inst = instantiate_parametric_modality err translator ind base_ext in
+  base_ext @ inst
                           
 let ptranslate_inductive err translator ind =
   translate_inductive_gen ETranslate.ptranslate_inductive err translator ind
