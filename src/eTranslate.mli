@@ -21,7 +21,15 @@ type translator = {
   inds : MutInd.t global_translation Mindmap.t;
   prefs : global_reference global_translation Cmap.t;
   pinds : MutInd.t global_translation Mindmap.t;
+  wrefs : global_reference global_translation Cmap.t;
+  winds : MutInd.t global_translation Mindmap.t;
+  paramrefs : global_reference global_translation Mindmap.t;
+  paraminds : MutInd.t global_translation Mindmap.t;
 }
+val param_mod:   Names.MutInd.t
+val param_mod_e: Names.MutInd.t
+val param_cst:   Names.Constant.t
+val param_cst_e: Names.Constant.t
 
 val translate :
   effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
@@ -42,3 +50,30 @@ val ptranslate_type :
 val ptranslate_inductive :
   effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
+
+val wtranslate :
+  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
+
+val wtranslate_type :
+  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
+
+val wtranslate_inductive :
+  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
+    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
+
+val param_mutual_inductive :
+  effect -> translator -> Environ.env -> MutInd.t * MutInd.t -> Declarations.mutual_inductive_body -> 
+    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry 
+
+val param_instance_inductive : 
+  effect -> translator -> Environ.env -> MutInd.t * MutInd.t * MutInd.t-> 
+    Declarations.one_inductive_body * int -> Evd.evar_map * EConstr.t * EConstr.t
+
+val wparam_mutual_inductive :
+  effect -> translator -> Environ.env -> MutInd.t-> Declarations.mutual_inductive_body -> 
+    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry 
+
+val param_definition :
+  effect -> translator -> Environ.env -> MutInd.t * MutInd.t -> 
+    Declarations.mutual_inductive_body -> 
+    Entries.mutual_inductive_entry -> Evd.evar_map * EConstr.t list

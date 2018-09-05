@@ -1,4 +1,4 @@
-Require Import Effects.Effects.
+Require Import Weakly.Effects.
 
 Definition foo (A : Type) (x : A) := x.
 Definition bar (A : Type) (x : A) := x.

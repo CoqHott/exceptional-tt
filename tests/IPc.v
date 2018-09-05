@@ -1,4 +1,4 @@
-Require Import Effects.Effects.
+Require Import Weakly.Effects.
 
 (** Alternative implementation of IP using effectful combinators instead of handwritten code. *)
 

@@ -1,4 +1,4 @@
-Require Import Effects.Effects.
+Require Import Weakly.Effects.
 
 Inductive foo (A : Type) (x : A) (y := x) (y : A) := Foo.
 

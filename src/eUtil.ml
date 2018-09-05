@@ -238,3 +238,10 @@ let process_inductive mib =
     mind_entry_private = mib.mind_private;
     mind_entry_universes = ind_univs
   }
+
+let primitive_record mind = 
+  match mind.mind_record with
+  | Some (Some _) -> true
+  | _ -> false
+
+

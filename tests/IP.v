@@ -1,4 +1,4 @@
-Require Import Effects.Effects.
+Require Import Weakly.Effects.
 
 Definition IP :=
   forall A B, ((A -> False) -> { n : nat & B n }) ->

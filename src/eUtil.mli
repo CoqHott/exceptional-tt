@@ -9,3 +9,6 @@ val retype_inductive :
   evar_map * one_inductive_entry list * Context.Rel.t
 
 val process_inductive : mutual_inductive_body -> mutual_inductive_entry
+
+val primitive_record : mutual_inductive_body -> bool
+
