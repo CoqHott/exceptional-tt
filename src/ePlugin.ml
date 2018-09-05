@@ -32,10 +32,10 @@ type translator = ETranslate.translator
 
 let empty_translator = 
   let open ETranslate in 
-  let refss = Cmap.add param_cst (GlobGen (ConstRef param_cst_e))  Cmap.empty in
-  let inds = Mindmap.add default_mutind (GlobGen default_mutind_e) Mindmap.empty in
-  let prefs = Cmap.add param_cst (GlobGen (ConstRef param_cst_r))  Cmap.empty in
-  let pinds = Mindmap.add default_mutind (GlobGen default_mutind_r) Mindmap.empty in
+  let refss =  Cmap.empty in
+  let inds = Mindmap.empty in
+  let prefs = Cmap.empty in
+  let pinds = Mindmap.empty in
   {
     ETranslate.refs = refss;
     inds = inds;
@@ -280,10 +280,21 @@ let instantiate_parametric_modality err translator (name, n) ext  =
   in
   let mind' = EUtil.process_inductive mind in
   let mind_ = ETranslate.param_mutual_inductive err translator env (name, name_e) mind mind' in
-(*
+
   let ((_, kn), _) = Declare.declare_mind mind_ in
-  let ind_ = Global.mind_of_delta_kn kn in *)
+  let name_param = Global.mind_of_delta_kn kn in 
+
+  let env = Global.env () in
+  let map i one_e =
+    let func = ETranslate.param_instance_inductive in
+    let names = (name, name_e, name_param) in
+    let (sigma, instance, pinstance) = func err translator env names (one_e,i) in 
+    ()
+  in
+  let _ = List.map_i map 0 (Array.to_list Declarations.(mind.mind_packets)) in
   ()
+
+
 
 
 let translate_inductive err translator ind =

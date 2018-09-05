@@ -50,30 +50,16 @@ match A with
 | pTypeErr _ e => True
 end.
 
-
-Inductive effect_default: Prop :=.
-Definition param {A: Type}: A -> Prop := fun _ => effect_default.
-
-Inductive effect_defaultᵒ (E:Type) : Type := effect_defaultᴱ: E -> effect_defaultᵒ E.
-Definition paramᵉ (E: Type) (A: @El E (@Typeᵉ E)): @El E A -> @El E (@Typeᵉ E) := 
-  fun _ => TypeVal E (effect_defaultᵒ E) (effect_defaultᴱ E).
-
-Inductive effect_defaultᴿ (E:Type) : effect_defaultᵒ E -> Type := .
-Definition paramᴿ (E: Type) (A: @El E (@Typeᵉ E)) (Aᴿ: @El E A -> Type):
-                            forall (a: @El E A), Aᴿ a -> @El E (paramᵉ E A a) -> Type := 
-  fun _  _ => effect_defaultᴿ E.
-
-(*
+Set Primitive Projections.
 Monomorphic Class ParamMod (A: Type) := {
   param: A -> Prop
 }.
 
-Monomorphic Instance ProductParamMod {A: Type} {B: A -> Type} 
-                                    `{forall a, ParamMod (B a)}:
-                         ParamMod (forall (a: A), (B a)) := {
-  param := fun f => forall (a: A), param (f a)
+Monomorphic Class ParamModᵉ (E: Type) (A: @El E (@Typeᵉ E)) := {
+  paramᵉ: @El E A -> Prop
 }.
-*)
+Unset Primitive Projections.
+
 
 (******************************)
 (*** Test handling of sorts ***)

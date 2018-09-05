@@ -1,7 +1,49 @@
 
 Require Import Weakly.Effects.
 
-Effect Translate nat.  Effect Translate list.
+Class ParamMod (A: Type) := {
+  param : A -> Prop
+}.
+
+Instance nat_param_instance: ParamMod (nat) := {
+  param := fun l => True
+}.
+Print nat_param_instance.
+
+Instance list_param_instance (A: Type): ParamMod (list A) := {
+  param := fun l => True
+}.
+Print list_param_instance.
+
+Check forall (A: Type) (l: list A), param l -> True.
+
+Effect Translate nat.  Effect Translate list. Print list_param.
+Effect Translate eq. Print eq_param.
+Effect Translate bool. Print bool_param.
+
+(*
+Inductive t (A:Type): Type :=
+| dd: t A
+| gg: nat -> (nat -> (bool -> (bool -> nat -> t A))) -> t A
+| ff: t A -> t A -> t A. 
+*)
+Inductive t (A:Type): Type :=
+| ff: t A -> t A -> nat -> t A -> t A.
+
+Effect Translate t. Print t_param.
+
+Inductive even: nat -> Type :=
+| evenO: even 0
+| evenS: forall n, odd n -> even (S n)
+with odd: nat -> Type :=
+| oddS: forall n, even n -> odd (S n).
+
+Instance even_param_instance (n: nat): ParamMod (even n) := {
+  param := fun l => True
+}.
+Print even_param_instance. Locate True.
+
+Effect Translate even. Print even_param.
 
 
 Effect List Translate nat bool. Parametricity List Translate nat bool.
