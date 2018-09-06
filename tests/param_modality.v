@@ -92,10 +92,8 @@ Print nat_instanceᵉ.
 (** When applying the translation, nat_instance is mapped to nat_instanceᵉ, thus
     enforcing the purity of the term in the target theory *)
 
-(** Currently, these terms are not made instance of the modality but can be declared 
-    as such with *)
-
-Existing Instance nat_instance.
+(** Note that the generated instances are declared instances of the modality class
+    automatically *)
 
 (** Note that is sufficient to make the source term an instance of the modality *)
 
@@ -212,7 +210,7 @@ Proof.
   intros. inversion H. exact H1. 
 Defined. 
 
-Effect Definition param_nat_raise : forall (e:Exception), param (raise e) -> False.
+Effect Definition param_nat_raise : forall (e:Exception), param (raise e: nat) -> False.
 Proof.
   intros E e H. inversion H. 
 Defined. 
@@ -253,7 +251,3 @@ Defined.
 (* dummy test *)
 
 Definition bar e : { n:nat & n = raise e} := existT _ (raise e) eq_refl.
-
-
-
-
