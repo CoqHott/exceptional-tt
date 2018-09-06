@@ -315,6 +315,12 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   let r = mkCast (ce, k, te) in
   (sigma, r)
 | Prod (na, t, u) ->
+  let (sigma,ty) = Typing.type_of env.env_src sigma c in
+  let is_prop = isSort sigma ty && is_prop_sort (ESorts.kind sigma (destSort sigma ty)) in
+  if is_prop then
+    let (sigma, ty) = otranslate_type env sigma c in 
+    (sigma, ty)
+  else
   let e = mkRel (Environ.nb_rel env.env_tgt) in
   let (sigma, p) = fresh_global env sigma prod_e in
   let (sigma, te) = otranslate_type env sigma t in
