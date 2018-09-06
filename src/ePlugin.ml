@@ -306,15 +306,21 @@ let instantiate_parametric_modality err translator (name, n) ext  =
     let func = ETranslate.param_instance_inductive in
     let names = (name, name_e, name_param) in
 
-    let (sigma, instance, pinstance) = func err translator env names (one_e,i) in 
-    let id = Label.to_string (MutInd.label name) ^ "_instance_" ^ string_of_int i in
-    let id = Id.of_string id in
+    let (sigma, base_instance_ty, pinstance) = func err translator env names (one_e,i) in
+    
+    let base_id = (Id.to_string mind.mind_packets.(i).mind_typename) ^ "_instance" in
+    let id = Id.of_string base_id in
     let uctx = UState.context (Evd.evar_universe_context sigma) in
-    let t = EConstr.to_constr sigma instance in
-    let instance_name = declare_constant_wo_ty id uctx t in
 
-    let pid = Label.to_string (MutInd.label name) ^ "_pinstance_" ^ string_of_int i in
-    let pid = Id.of_string pid in
+    (* Polymorphic Axiom declaration *)
+    let pe = (None, false, (EConstr.to_constr sigma base_instance_ty, uctx), None) in
+    let pd = Entries.ParameterEntry pe in
+    
+    let decl = (pd, IsAssumption Definitional) in
+    let instance_name = Declare.declare_constant id decl in
+    (* -- *)
+
+    let pid = translate_name id in
     let tp = EConstr.to_constr sigma pinstance in
     let pinstance_name = declare_constant_wo_ty pid uctx tp in
     ExtConstant (instance_name, ConstRef pinstance_name)

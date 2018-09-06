@@ -1243,7 +1243,7 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let body = mkApp (param_constr, [|ty; func|]) in
   let base_instance = it_mkLambda_or_LetIn body ctx in
   let () = Feedback.msg_info (Printer.pr_econstr base_instance) in
-  let sigma,_ = Typing.type_of env sigma base_instance in
+  let sigma, instance_ty = Typing.type_of env sigma base_instance in
   
   let (sigma, cenv) = make_context err translator env sigma in
   let (sigma, decl_e) = make_error err env sigma in
@@ -1280,7 +1280,7 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let () = Feedback.msg_info (Printer.pr_econstr param_instance) in
   let sigma,_ = Typing.type_of env sigma param_instance in
 
-  (sigma, base_instance, param_instance)
+  (sigma, instance_ty, param_instance)
 
 (** Locally extend a translator to fake an inductive definition *)
 let pextend_inductive env (mutind0, _) mind0 mind =
