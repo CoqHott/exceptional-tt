@@ -917,11 +917,12 @@ let translate_constructors env sigma mind0 mind ind0 ind =
     (sigma, te)
   in
   List.fold_map map sigma ind.mind_entry_lc
-
+  
 let translate_inductive_body env sigma mind0 mind n ind0 ind =
   let typename = translate_internal_name ind.mind_entry_typename in
-  let is_prop = try is_prop_sort (snd (Reduction.dest_arity env.env_src ind.mind_entry_arity))
-                with Reduction.NotArity -> false
+  let is_prop = match ind0.mind_arity with
+    | RegularArity ar -> is_prop_sort ar.mind_sort
+    | TemplateArity _ -> false
   in
   let constructors = List.map translate_name ind.mind_entry_consnames in
   let nindices = List.length ind0.mind_arity_ctxt - List.length mind0.mind_params_ctxt in 
