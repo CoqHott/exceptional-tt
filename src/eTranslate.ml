@@ -1257,11 +1257,11 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let sigma,(param_constr, u) = Evd.fresh_constructor_instance env sigma param_constr in
   let param_constr = mkConstructU (param_constr, EInstance.make u) in
   let param_constr = mkApp (param_constr, [|mkRel e|]) in
-  let args = List.init (List.length ctx - 1) (fun i -> mkRel (i + 1)) in
+  let args =  List.rev (List.init (List.length ctx - 1) (fun i -> mkRel (i + 1))) in
   let sigma, (ind, u) = Evd.fresh_inductive_instance env sigma (name_e, n) in
   let ind = mkIndU (ind, EInstance.make u) in
   let ind = if Option.is_empty err then mkApp (ind, [|mkRel (List.length ctx)|]) else ind in
-  let ty = applist (ind, List.rev args) in
+  let ty = applist (ind, args) in
   let (sigma, typeval) = Evd.fresh_global env sigma typeval_e in
   let typeval = EConstr.of_constr typeval in
   let def_cons = Array.length one_d.mind_user_lc in 
