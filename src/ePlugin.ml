@@ -318,6 +318,9 @@ let instantiate_parametric_modality err translator (name, n) ext  =
     
     let decl = (pd, IsAssumption Definitional) in
     let instance_name = Declare.declare_constant id decl in
+    let _,dirPath,label = Constant.repr3 instance_name in
+    let qualid = Libnames.make_qualid dirPath (Label.to_id label) in
+    let () = Classes.existing_instance true (Libnames.Qualid (None, qualid)) None in
     (* -- *)
 
     let pid = translate_name id in
