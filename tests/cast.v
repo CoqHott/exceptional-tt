@@ -1,10 +1,5 @@
 Require Import Weakly.Effects.
 
-Effect Translate False.
-
-Effect Translate False_ind.
-Effect Translate False_rect.
-
 Effect Definition Exception : Type.
 Proof.
   exact (fun E : Type => TypeVal E E (@id E)).
@@ -25,23 +20,12 @@ Notation "A + B" := (sum A B) : type_scope.
 Arguments inl {_ _} _.
 Arguments inr {_ _} _.
 
-Effect Translate sum.
-Effect Translate sum_rect. 
-Effect Translate sum_rec. 
+Effect List Translate sum sum_rect sum_rec. 
+Effect List Translate False False_ind False_rect not.
+Effect List Translate eq eq_ind eq_rect eq_rec.
+Effect List Translate nat nat_rect nat_rec. 
 
 (* basic inversion lemmas for nat *)
-
-Effect Translate not.
-Effect Translate nat.
-Effect Translate eq.
-
-Effect Translate eq_ind.
-Effect Translate eq_rect.
-Effect Translate eq_rec.
-
-
-Effect Translate nat_rect.
-Effect Translate nat_rec. 
 
 Effect Definition S_not0 : forall n, 0 <> S n.
 Proof.
@@ -51,8 +35,6 @@ Defined.
 Effect Definition inj_S : forall n m, S n = S m -> n = m. 
 intros E n m e. inversion e; econstructor.
 Defined.
-
-(* boilerplate for eq, can be removed if pattern mathcing on eq is correctly translated*)
 
 (* Decidable type class *)
 
@@ -131,7 +113,7 @@ Effect Translate list_to_pair_prop.
 Definition list_to_pair_prop_soundness E A x y :
   list_to_pair_propᵉ E A x y = eq_reflᵉ  _ _ _ := eq_refl. 
 
-(* this one should be forbidden, because of non cummulativity *)
+(* those two examples should be forbidden, because of non cummulativity *)
 
 Definition list_to_pair_prop_fake : forall A (x y : A) e,
     list_to_pair (raise e) = (x,y).
