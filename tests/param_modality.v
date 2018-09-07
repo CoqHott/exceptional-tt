@@ -1,7 +1,6 @@
 
 Require Import Weakly.Effects.
 
-
 (** Here we are going to give a detailed explenation of how the new 
     exceptional translation works. *)
 
@@ -59,7 +58,7 @@ Effect Translate eq. Print eqᵒ.
 
 (** The name of the parametric inductive is $INDUCTIVE_param and the 
     name of the parametric modality is 
-    $INDUCTIVE_instance_$NUMBER_OF_INDUCTIVE_IN_BLOCK *)
+    $INDUCTIVE_instance *)
 
 (** Here the parametric modality has the form of:
       Class ParamMod (A: Type) := {
@@ -78,28 +77,23 @@ Print nat_param.
     | S_param : forall H : natᵒ E, nat_param E H -> nat_param E (Sᵉ E H)
  *)
 
-Print nat_instance_0.
-(* nat_instance_0 = {| param := fun _ : nat => True |} *)
+Print nat_instance.
+(* nat_instance: AXIOM -> ParamMod nat *)
 
 (** We actually need the instance for the parametric modality in the target
     theory but also in the source theory. However, is not possible to enforce that 
-    the term is pure in the source theory, so the instance is choosed degenerated. 
+    the term is pure in the source theory, so the instance is an axiom in order
+    to mantain consistency (?). 
     Here we can see that the modality does what we want in the target theory *)
 
-Print nat_pinstance_0.
-(* nat_pinstance_0 = fun E : Type => {| paramᵉ := fun H : natᵒ E => nat_param E H |} *)
+Print nat_instanceᵉ.
+(* nat_instanceᵉ = fun E : Type => {| paramᵉ := fun H : natᵒ E => nat_param E H |} *)
 
-(** When applying the translation, nat_instance_0 is mapped to nat_pinstance_0, thus
+(** When applying the translation, nat_instance is mapped to nat_instanceᵉ, thus
     enforcing the purity of the term in the target theory *)
 
-(** Currently, these terms are not made instance of the modality but can be declared 
-    as such with *)
-
-Effect Definition nat_instance : ParamMod nat.
-exact nat_pinstance_0.
-Defined. 
-
-Existing Instance nat_instance.
+(** Note that the generated instances are declared instances of the modality class
+    automatically *)
 
 (** Note that is sufficient to make the source term an instance of the modality *)
 
@@ -142,7 +136,7 @@ Print even_param.
   with odd_param (E : Type) : forall H : natᵒ E, oddᵒ E H -> Prop :=
   | oddS_param : forall (n : natᵒ E) (H : evenᵒ E n), even_param E n H -> odd_param E (Sᵉ E n) (oddSᵉ E n H)
 *)
-Print even_pinstance_0. (* Print even_instance_1 *)
+Print even_instanceᵉ. (* Print odd_instance *)
 (* even_pinstance_0 = fun (E : Type) (H : natᵒ E) => {| paramᵉ := fun H0 : evenᵒ E H => even_param E H H0 |} *)
 
 (* The generated parametric inductive in this case is something to look at.
@@ -216,7 +210,7 @@ Proof.
   intros. inversion H. exact H1. 
 Defined. 
 
-Effect Definition param_nat_raise : forall (e:Exception), param (raise e) -> False.
+Effect Definition param_nat_raise : forall (e:Exception), param (raise e: nat) -> False.
 Proof.
   intros E e H. inversion H. 
 Defined. 
@@ -257,7 +251,3 @@ Defined.
 (* dummy test *)
 
 Definition bar e : { n:nat & n = raise e} := existT _ (raise e) eq_refl.
-
-
-
-

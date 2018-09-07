@@ -16,7 +16,8 @@ type effect = global_reference option
 
 exception MissingGlobal of effect * global_reference
 exception MissingPrimitive of global_reference
-
+exception MatchEliminationNotSupportedOnTranslation
+                            
 type 'a global_translation =
 | GlobGen of 'a
   (** Implementation generic over the type of exceptions *)
@@ -265,6 +266,11 @@ let translate_case_info env sigma ci mip =
   } in
   { ci_ind; ci_npar; ci_cstr_ndecls; ci_cstr_nargs; ci_pp_info; }
 
+let translate_prop_case_info env sigma ci mip =
+  let gen, ci_ind = get_ind env ci.ci_ind in
+  let ci_npar = if gen then 1 + ci.ci_npar else ci.ci_npar in
+  { ci with ci_ind;  ci_npar; }
+
 let ptranslate_case_info env sigma ci mip =
   let gen, ci_ind = get_pind env ci.ci_ind in
   let ci_npar = if gen then 1 + 2 * ci.ci_npar else 2 * ci.ci_npar in
@@ -297,7 +303,12 @@ let mk_default_primitive_record env sigma (ind, u) =
   let cst = Constant.make3 modd dir lab in 
   let (gen, default) = get_cst env cst in 
   let (sigma, r) = fresh_global env sigma default in 
-  (sigma, gen, EInstance.kind sigma (snd (destConst sigma r)), r) 
+  (sigma, gen, EInstance.kind sigma (snd (destConst sigma r)), r)
+
+let ind_in_prop mip = 
+  match mip.mind_arity with
+  | RegularArity ar -> is_prop_sort ar.mind_sort
+  | TemplateArity _ -> false
 
 (* From Γ ⊢ M : A produce [M] s.t. ⟦Γ⟧ ⊢ [M] : ⟦A⟧. *)
 let rec otranslate env sigma c = match EConstr.kind sigma c with
@@ -315,6 +326,12 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   let r = mkCast (ce, k, te) in
   (sigma, r)
 | Prod (na, t, u) ->
+  let (sigma,ty) = Typing.type_of env.env_src sigma c in
+  let is_prop = isSort sigma ty && is_prop_sort (ESorts.kind sigma (destSort sigma ty)) in
+  if is_prop then
+    let (sigma, ty) = otranslate_type env sigma c in 
+    (sigma, ty)
+  else
   let e = mkRel (Environ.nb_rel env.env_tgt) in
   let (sigma, p) = fresh_global env sigma prod_e in
   let (sigma, te) = otranslate_type env sigma t in
@@ -360,7 +377,23 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   (sigma, c)
 | Case (ci, r, c, p) ->
   let (_, mip) = Inductive.lookup_mind_specif env.env_src ci.ci_ind in
-  let cie = translate_case_info env sigma ci mip in
+  let r_ctx, r_end = decompose_lam_assum sigma r in
+  let p_env_src = EConstr.push_rel_context r_ctx env.env_src in
+  let match_on_prop = ind_in_prop mip in
+  let () =
+    let module S = ESorts in 
+    if isSort sigma r_end then
+      let sort = S.kind sigma (destSort sigma r_end) in 
+      ( if is_prop_sort sort && not match_on_prop then
+          raise MatchEliminationNotSupportedOnTranslation )
+    else
+      let p_sigma, r_end_type = Typing.type_of p_env_src sigma r_end in
+      let sort = S.kind p_sigma (destSort p_sigma r_end_type) in
+      if is_prop_sort sort && not match_on_prop then
+        raise MatchEliminationNotSupportedOnTranslation
+  in
+  let ci_translator = if match_on_prop then translate_prop_case_info else translate_case_info in
+  let cie = ci_translator env sigma ci mip in
   let (ctx, r) = EConstr.decompose_lam_assum sigma r in
   let (sigma, env', ctxe) = otranslate_context env sigma ctx in
   let (sigma, ce) = otranslate env sigma c in
@@ -382,7 +415,8 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   let default = Vars.subst1 default_case (Vars.liftn 1 2 default) in
   let default = mkApp (default, [|mkRel 1|]) in
   let default = it_mkLambda_or_LetIn default default_ctx in
-  let pe = Array.append pe [|default|] in
+  let pe = if match_on_prop then pe else Array.append pe [| default |] in
+  (*let pe = Array.append pe [|default|] in*)
   let r = mkCase (cie, re, ce, pe) in
   (sigma, r)
 | Fix (fi, recdef) ->
@@ -477,11 +511,7 @@ and otranslate_type_and_err env sigma t = match EConstr.kind sigma t with
     clutter the translation *)
 and otranslate_ind env sigma (ind, u) args =
   let (mib, mip) = Inductive.lookup_mind_specif env.env_src ind in
-  let is_prop = 
-    match mip.mind_arity with
-    | RegularArity ar -> is_prop_sort ar.mind_sort
-    | TemplateArity _ -> false
-  in
+  let is_prop = ind_in_prop mip in
   let fold sigma c = otranslate env sigma c in
   let (sigma, args) = Array.fold_map fold sigma args in
   if is_prop then
@@ -911,11 +941,12 @@ let translate_constructors env sigma mind0 mind ind0 ind =
     (sigma, te)
   in
   List.fold_map map sigma ind.mind_entry_lc
-
+  
 let translate_inductive_body env sigma mind0 mind n ind0 ind =
   let typename = translate_internal_name ind.mind_entry_typename in
-  let is_prop = try is_prop_sort (snd (Reduction.dest_arity env.env_src ind.mind_entry_arity))
-                with Reduction.NotArity -> false
+  let is_prop = match ind0.mind_arity with
+    | RegularArity ar -> is_prop_sort ar.mind_sort
+    | TemplateArity _ -> false
   in
   let constructors = List.map translate_name ind.mind_entry_consnames in
   let nindices = List.length ind0.mind_arity_ctxt - List.length mind0.mind_params_ctxt in 
@@ -1237,7 +1268,7 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let body = mkApp (param_constr, [|ty; func|]) in
   let base_instance = it_mkLambda_or_LetIn body ctx in
   let () = Feedback.msg_info (Printer.pr_econstr base_instance) in
-  let sigma,_ = Typing.type_of env sigma base_instance in
+  let sigma, instance_ty = Typing.type_of env sigma base_instance in
   
   let (sigma, cenv) = make_context err translator env sigma in
   let (sigma, decl_e) = make_error err env sigma in
@@ -1250,11 +1281,11 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let sigma,(param_constr, u) = Evd.fresh_constructor_instance env sigma param_constr in
   let param_constr = mkConstructU (param_constr, EInstance.make u) in
   let param_constr = mkApp (param_constr, [|mkRel e|]) in
-  let args = List.init (List.length ctx - 1) (fun i -> mkRel (i + 1)) in
+  let args =  List.rev (List.init (List.length ctx - 1) (fun i -> mkRel (i + 1))) in
   let sigma, (ind, u) = Evd.fresh_inductive_instance env sigma (name_e, n) in
   let ind = mkIndU (ind, EInstance.make u) in
   let ind = if Option.is_empty err then mkApp (ind, [|mkRel (List.length ctx)|]) else ind in
-  let ty = applist (ind, List.rev args) in
+  let ty = applist (ind, args) in
   let (sigma, typeval) = Evd.fresh_global env sigma typeval_e in
   let typeval = EConstr.of_constr typeval in
   let def_cons = Array.length one_d.mind_user_lc in 
@@ -1274,7 +1305,7 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let () = Feedback.msg_info (Printer.pr_econstr param_instance) in
   let sigma,_ = Typing.type_of env sigma param_instance in
 
-  (sigma, base_instance, param_instance)
+  (sigma, instance_ty, param_instance)
 
 (** Locally extend a translator to fake an inductive definition *)
 let pextend_inductive env (mutind0, _) mind0 mind =

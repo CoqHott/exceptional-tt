@@ -5,6 +5,7 @@ type effect = global_reference option
 
 exception MissingGlobal of effect * global_reference
 exception MissingPrimitive of global_reference
+exception MatchEliminationNotSupportedOnTranslation
 
 type 'a global_translation =
 | GlobGen of 'a
