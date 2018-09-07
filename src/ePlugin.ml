@@ -471,6 +471,8 @@ let _ = register_handler begin function
 | ETranslate.MissingPrimitive gr ->
   let ref = pr_global gr in
   str "Missing primitive: " ++ ref ++ str "."
+| ETranslate.MatchEliminationNotSupportedOnTranslation ->
+   str "Elimination error: this match is not allowed under the translation"
 | _ -> raise Unhandled
 end
 
