@@ -1,6 +1,7 @@
 
 Require Import Weakly.Effects.
 
+
 (** Here we are going to give a detailed explenation of how the new 
     exceptional translation works. *)
 
@@ -156,6 +157,7 @@ Check param_translation_exampleᵉ.
 Unset Printing Implicit.
 
 Effect Translate False.
+Effect Translate not.
 
 Effect Definition Exception : Type.
 Proof.
@@ -177,10 +179,11 @@ Proof.
   - exact (Perr e).
 Defined.
 
-Scheme natᵒ_rect := Induction for natᵒ Sort Type.
-Scheme natᵒ_ind := Induction for natᵒ Sort Prop.
 
 (* Define catch eliminator on Prop and Type *)
+
+Scheme natᵒ_rect := Induction for natᵒ Sort Type.
+Scheme natᵒ_ind := Induction for natᵒ Sort Prop.
 
 Effect Definition catch_nat : forall (P : nat -> Type) (P0 : P 0) (PS : forall n, P n -> P (S n)) (Praise : forall e, P (raise e)) (n:nat), P n.
 Proof.
@@ -204,13 +207,13 @@ Effect Definition param_nat_0 : param 0.
 Proof.
   econstructor. 
 Defined. 
-
+ 
 Effect Definition param_nat_S : forall n, param (S n) -> param n.
 Proof.
   intros. inversion H. exact H1. 
 Defined. 
 
-Effect Definition param_nat_raise : forall (e:Exception), param (raise e: nat) -> False.
+Effect Definition param_nat_raise : forall (e:Exception), param (@raise nat e) -> False.
 Proof.
   intros E e H. inversion H. 
 Defined. 
@@ -224,25 +227,21 @@ Proof.
   - intros e H. destruct (param_nat_raise e H).
 Defined.
 
-Definition nat_rect : forall (P : nat -> Type) (P0 : P 0) (PS : forall n, P n -> P (S n)) (n:nat), P n.
-Proof.
-  intros P P0 PS n. refine (catch_nat (fun n => P n) P0 PS _ n). 
-  - intros e. exact (raise e). 
-Defined.
-
+Effect Translate nat_rect.
+  
 (* correctness of param for nat *)
 
-Effect Definition raise_not0 : forall (e:Exception), 0 = raise e -> False.
+Effect Definition raise_not0 : forall (e:Exception), 0 <> raise e.
 Proof.
-  simpl; intros. inversion H.
+  compute; intros. inversion H.
 Defined. 
 
-Effect Definition raise_notS : forall (e:Exception) n, S n = raise e -> False.
+Effect Definition raise_notS : forall (e:Exception) n, S n <> raise e.
 Proof.
-  simpl; intros. inversion H.
+  compute; intros. inversion H.
 Defined. 
 
-Definition param_correct_nat (n:nat) : param n -> forall e, n = raise e -> False.
+Definition param_correct_nat (n:nat) : param n -> forall e, n <> raise e.
   intro H. refine (nat_ind (fun n => forall e : Exception, n <> raise e) _ _ n H).
   - exact raise_not0. 
   - clear; intros n H e. exact (raise_notS e n).
