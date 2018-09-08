@@ -51,11 +51,11 @@ match A with
 end.
 
 Set Primitive Projections.
-Monomorphic Class ParamMod (A: Type) := {
+Class ParamMod (A: Type) := {
   param: A -> Prop
 }.
 
-Monomorphic Class ParamModᵉ (E: Type) (A: @El E (@Typeᵉ E)) := {
+Class ParamModᵉ (E: Type) (A: @El E (@Typeᵉ E)) := {
   paramᵉ: @El E A -> Prop
 }.
 Unset Primitive Projections.
