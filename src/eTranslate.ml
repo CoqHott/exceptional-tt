@@ -428,7 +428,6 @@ let rec otranslate env sigma c = match EConstr.kind sigma c with
   let r = mkCoFix (fi, recdefe) in
   (sigma, r)
 | Proj (p, c) ->
-  let () = Feedback.msg_info (Pp.str "Proj") in
   let constant = Names.Projection.constant p in 
   let unfolded = Names.Projection.unfolded p in
   let _, glob_constante = get_cst env constant in
@@ -1093,7 +1092,6 @@ let rec otranslate_param env param_env sigma (ind, ind_e) c = match EConstr.kind
 | App (t, args) ->
    let args = Array.to_list args in
    let (sigma, tw) = otranslate_param env param_env sigma (ind, ind_e) t in
-   let () = Feedback.msg_info (Pp.str "pre APp") in
    let fold t (sigma, accum) = 
      let (sigma, t_) = otranslate_param env param_env sigma (ind, ind_e) t in
      (sigma, t_ :: accum)
@@ -1141,7 +1139,6 @@ and otranslate_param_type env param_env sigma (ind, ind_e) c = match EConstr.kin
           let new_env = { nenv with env_tgt = assum_env; } in
           (sigma, new_env, 2 :: param_env)
    in
-   let () = Feedback.msg_info (Pp.str "on Prod -> " ++ Pp.int (Environ.nb_rel nenv.env_tgt)) in
    let (sigma, uw) = otranslate_param_type nenv param_env sigma (ind, ind_e) u in
    let n = if is_ind_param then 3 else 2 in
    let uw = Vars.liftn 1 (if is_ind_param then 4 else 3) uw in
@@ -1228,7 +1225,6 @@ let param_mutual_inductive err translator env (block, block_e) mind_d mind_e =
   let (sigma, env, _) = otranslate_context env sigma of_rel_decl_param_ctxt in
   let inds = List.combine (Array.to_list mind_d.mind_packets) mind_e.mind_entry_inds in
   let inds = List.mapi (fun i (l,r) -> (i,l,r)) inds in
-  let () = Feedback.msg_info (Pp.str "---->") in
   let map sigma (n, ind_d, ind_e) =
     param_inductive err env sigma (block, block_e, n) mind_d mind_e ind_d ind_e
   in
@@ -1252,24 +1248,21 @@ let param_mutual_inductive err translator env (block, block_e) mind_d mind_e =
 
 let param_instance_inductive err translator env (name,name_e,name_param) (one_d, n) = 
   let sigma = Evd.from_env env in 
-  let (sigma,coq_True) = Evd.fresh_global env sigma (Coqlib.build_coq_True ()) in
-  let coq_True = EConstr.of_constr coq_True in
+  let gen = Option.is_empty err in
 
   let arity = Declarations.(one_d.mind_arity_ctxt) in
   let ctx = List.map EConstr.of_rel_decl arity in
-  let param_constr = ((param_mod, 0), 1) in
-  let sigma,(param_constr, u) = Evd.fresh_constructor_instance env sigma param_constr in
-  let param_constr = mkConstructU (param_constr, EInstance.make u) in
-  let args = List.init (List.length ctx) (fun i -> mkRel (i + 1)) in
+  let param_ind = (param_mod, 0) in
+  let sigma,(param_ind, u) = Evd.fresh_inductive_instance env sigma param_ind in
+  let param_ind = mkIndU (param_ind, EInstance.make u) in
+  let args = List.rev (List.init (List.length ctx) (fun i -> mkRel (i + 1))) in
   let sigma, (ind, u) = Evd.fresh_inductive_instance env sigma (name, n) in
   let ind = mkIndU (ind, EInstance.make u) in
-  let ty = applist (ind, List.rev args) in
-  let func = mkLambda (Anonymous, ty, coq_True) in
-  let body = mkApp (param_constr, [|ty; func|]) in
-  let base_instance = it_mkLambda_or_LetIn body ctx in
-  let () = Feedback.msg_info (Printer.pr_econstr base_instance) in
-  let sigma, instance_ty = Typing.type_of env sigma base_instance in
-  
+  let ty = applist (ind, args) in
+  let body = mkApp (param_ind, [| ty |]) in
+  let instance_ty = it_mkProd_or_LetIn body ctx in
+  let sigma,_ = Typing.type_of env sigma instance_ty in
+
   let (sigma, cenv) = make_context err translator env sigma in
   let (sigma, decl_e) = make_error err env sigma in
   
@@ -1284,14 +1277,15 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let args =  List.rev (List.init (List.length ctx - 1) (fun i -> mkRel (i + 1))) in
   let sigma, (ind, u) = Evd.fresh_inductive_instance env sigma (name_e, n) in
   let ind = mkIndU (ind, EInstance.make u) in
-  let ind = if Option.is_empty err then mkApp (ind, [|mkRel (List.length ctx)|]) else ind in
+  let ind = if gen then mkApp (ind, [|mkRel (List.length ctx)|]) else ind in
   let ty = applist (ind, args) in
   let (sigma, typeval) = Evd.fresh_global env sigma typeval_e in
   let typeval = EConstr.of_constr typeval in
   let def_cons = Array.length one_d.mind_user_lc in 
   let (sigma, (def, u)) = Evd.fresh_constructor_instance env sigma ((name_e,n), def_cons + 1) in
   let def = mkConstructU (def, EInstance.make u) in
-  let param_ty = mkApp (typeval, [| mkRel e; ty; applist (def, mkRel e :: args) |]) in
+  let def_args = if gen then mkRel e :: args else args in
+  let param_ty = mkApp (typeval, [| mkRel e; ty; applist (def, def_args) |]) in
 
   let sigma, (ind_p, u) = Evd.fresh_inductive_instance env sigma (name_param, n) in
   let ind_p = mkIndU (ind_p, EInstance.make u) in
@@ -1302,7 +1296,6 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let func = mkLambda (Anonymous, ty, mkApp (inner_func, [| mkRel 1 |])) in
   let body = mkApp (param_constr, [|param_ty; func|]) in
   let param_instance = it_mkLambda_or_LetIn body ctx in
-  let () = Feedback.msg_info (Printer.pr_econstr param_instance) in
   let sigma,_ = Typing.type_of env sigma param_instance in
 
   (sigma, instance_ty, param_instance)
