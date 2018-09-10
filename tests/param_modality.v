@@ -179,6 +179,65 @@ Proof.
   - exact (Perr e).
 Defined.
 
+Effect Definition catch_bool_Prop : forall (P : bool -> Prop), P true -> P false -> (forall e, P (raise e)) -> forall b, P b.
+Proof.
+  intros Exc P Pt Pf Perr b. destruct b.
+  - exact Pt.
+  - exact Pf.
+  - exact (Perr e).
+Defined.
+
+Effect Translate bool_rect.
+
+(* Fail because it requires it parametricity proof *)
+Fail Effect Translate bool_ind.
+
+(* explain how param works on nat *)
+
+Effect Definition param_bool_true : param true.
+Proof.
+  econstructor. 
+Defined. 
+
+Effect Definition param_bool_false : param false.
+Proof.
+  econstructor. 
+Defined. 
+
+Effect Definition param_bool_raise : forall (e:Exception), param (@raise bool e) -> False.
+Proof.
+  intros E e H. inversion H. 
+Defined. 
+
+(* Define specific eliminations: parametric for Prop, default raise for Type *)
+
+Definition bool_ind : forall (P : bool -> Prop) (Pt : P true) (Pf : P false) (b:bool), param b -> P b.
+Proof.
+  intros P Pt Pf b. induction b using catch_bool_Prop; intros H; auto.
+  - destruct (param_bool_raise e H).
+Defined.
+
+Effect Translate bool_ind. 
+ 
+(* correctness of param for bool *)
+
+Effect Definition raise_nottrue : forall (e:Exception), true <> raise e.
+Proof.
+  compute; intros. inversion H.
+Defined. 
+
+Effect Definition raise_notfalse : forall (e:Exception), false <> raise e.
+Proof.
+  compute; intros. inversion H.
+Defined. 
+
+Definition param_correct_bool (b:bool) : param b -> forall e, b <> raise e.
+  intro H. refine (bool_ind (fun b => forall e : Exception, b <> raise e) _ _ b H).
+  - exact raise_nottrue. 
+  - exact raise_notfalse. 
+Defined.
+
+Effect Translate param_correct_bool. 
 
 (* Define catch eliminator on Prop and Type *)
 
@@ -220,13 +279,17 @@ Defined.
 
 (* Define specific eliminations: parametric for Prop, default raise for Type *)
 
+(* Fail because it requires it parametricity proof *)
+Fail Effect Translate nat_ind.
+
 Definition nat_ind : forall (P : nat -> Prop) (P0 : P 0) (PS : forall n, P n -> P (S n)) (n:nat), param n -> P n.
 Proof.
-  intros P P0 PS n. refine (catch_nat_Prop (fun n => param n -> P n) (fun _ => P0) _ _ n). 
-  - intros. apply PS. apply H. exact (param_nat_S _ H0).
-  - intros e H. destruct (param_nat_raise e H).
+  intros P P0 PS n. induction n using catch_nat_Prop; auto. 
+  - intros HS. apply PS. apply IHn. exact (param_nat_S _ HS).
+  - intros H. destruct (param_nat_raise e H).
 Defined.
 
+Effect Translate nat_ind.
 Effect Translate nat_rect.
   
 (* correctness of param for nat *)
@@ -247,6 +310,83 @@ Definition param_correct_nat (n:nat) : param n -> forall e, n <> raise e.
   - clear; intros n H e. exact (raise_notS e n).
 Defined.
 
+Effect Translate param_correct_nat. 
+
 (* dummy test *)
 
 Definition bar e : { n:nat & n = raise e} := existT _ (raise e) eq_refl.
+
+
+(* Define catch eliminator on Prop and Type *)
+
+Scheme listᵒ_rect := Induction for listᵒ Sort Type.
+Scheme listᵒ_ind := Induction for listᵒ Sort Prop.
+
+Effect Definition catch_list : forall A (P : list A -> Type) (Pnil : P nil) (Pcons : forall (a:A) l , P l -> P (a :: l)%list) (Praise : forall e, P (raise e)) (l:list A), P l.
+Proof.
+  intros Exc A P Pnil Pcons Perr l. induction l.
+  - exact Pnil.
+  - apply Pcons. auto. 
+  - exact (Perr e).
+Defined.
+
+Effect Definition catch_list_Prop : forall A (P : list A -> Prop) (Pnil : P nil) (Pcons : forall (a:A) l , P l -> P (a :: l)%list) (Praise : forall e, P (raise e)) (l:list A), P l.
+Proof.
+  intros Exc A P Pnil Pcons Perr l. induction l.
+  - exact Pnil.
+  - apply Pcons. auto. 
+  - exact (Perr e).
+Defined.
+
+(* explain how param works on nat *)
+
+Effect Definition param_list_nil : forall A, param (@nil A).
+Proof.
+  econstructor. 
+Defined. 
+ 
+Effect Definition param_list_cons : forall A a (l:list A), param (cons a l) -> param l.
+Proof.
+  intros. inversion H. exact H1. 
+Defined. 
+
+Effect Definition param_list_raise : forall (e:Exception) A, param (@raise (list A) e) -> False.
+Proof.
+  intros E A e H. inversion H. 
+Defined. 
+
+(* Define specific eliminations: parametric for Prop, default raise for Type *)
+
+(* Fail because it requires it parametricity proof *)
+Fail Effect Translate list_ind.
+
+Definition list_ind : forall A (P : list A -> Prop) (Pnil : P nil) (PS : forall a l, P l -> P (cons a l)) l, param l -> P l.
+Proof.
+  intros A P Pnil Pcons l. induction l using catch_list_Prop; auto. 
+  - intros Hcons. apply Pcons. apply IHl. exact (param_list_cons _ _ _ Hcons).
+  - intros H. destruct (param_list_raise e A H).
+Defined.
+
+Effect Translate list_ind.
+Effect Translate list_rect.
+  
+(* correctness of param for nat *)
+
+Effect Definition raise_notnil : forall A (e:Exception), (@nil A) <> raise e.
+Proof.
+  compute; intros. inversion H.
+Defined. 
+
+Effect Definition raise_notcons : forall A (e:Exception) a (l:list A), cons a l <> raise e.
+Proof.
+  compute; intros. inversion H.
+Defined. 
+
+Definition param_correct_list A (l:list A) : param l -> forall e, l <> raise e.
+  intro H. refine (list_ind A (fun l => forall e : Exception, l <> raise e) _ _ l H).
+  - exact (raise_notnil A). 
+  - clear; intros a l H e. exact (raise_notcons A e a l).
+Defined.
+
+Effect Translate param_correct_list. 
+
