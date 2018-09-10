@@ -390,3 +390,69 @@ Defined.
 
 Effect Translate param_correct_list. 
 
+
+(** For vector *)
+
+Inductive vec (A: Type): nat -> Type :=
+| vnil  : vec A 0
+| vcons : forall n, A -> vec A n -> vec A (S n).
+
+Effect Translate vec.
+
+Effect Definition catch_vec: forall A (P: forall n, vec A n -> Type),
+    (P 0 (vnil A)) ->
+    (forall n a v, P n v -> P (S n) (vcons A n a v)) ->
+    (forall n e, P n (raise e)) -> 
+    forall n v, P n v.
+Proof.
+  refine (fun E A P Pvnil Pvcons Pvraise => _).
+  fix f 2; intros n v; case v.
+  - exact Pvnil.
+  - intros m a v'; exact (Pvcons m a v' (f m v')).
+  - intros m e; exact (Pvraise m e).
+Defined.
+
+Effect Definition catch_vec_Prop: forall A (P: forall n, vec A n -> Prop),
+    (P 0 (vnil A)) ->
+    (forall n a v, P n v -> P (S n) (vcons A n a v)) ->
+    (forall n e, P n (raise e)) -> 
+    forall n v, P n v.
+Proof.
+  refine (fun E A P Pvnil Pvcons Pvraise => _).
+  fix f 2; intros n v; case v.
+  - exact Pvnil.
+  - intros m a v'; exact (Pvcons m a v' (f m v')).
+  - intros m e; exact (Pvraise m e).
+Defined.
+
+Effect Definition param_vec_vnil: forall (A: Type), param (vnil A).
+Proof.
+  intros; constructor.
+Defined.
+
+Effect Definition param_vec_vcons: forall A n a v, param (vcons A n a v) -> param v.
+Proof.
+  intros E A n a v H. inversion H. (* Here it can be solved, but the general case may be not *)
+Admitted.
+
+Effect Definition param_vec_raise: forall A n e, param (@raise (vec A n) e) -> False.
+Proof.
+  intros E A n e H. inversion H.
+Defined.
+
+Fail Effect Translate vec_ind.
+
+Definition vec_ind': forall A (P: forall n, vec A n -> Prop),
+    (P 0 (vnil A))->
+    (forall n a v, P n v -> P (S n) (vcons A n a v)) ->
+    forall n (v: vec A n), param v -> P n v.
+Proof.
+  intros A P Pvnil Pvcons n v.
+  induction v using catch_vec_Prop.
+  - intros; exact Pvnil.
+  - intros Pparam. refine (Pvcons _ _ _ _). apply IHv. exact (param_vec_vcons _ _ _ _ Pparam).
+  - intros. apply param_vec_raise in H. destruct H.
+Defined.
+                  
+
+                                       
