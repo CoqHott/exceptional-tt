@@ -1,5 +1,5 @@
-
 Require Import Weakly.Effects.
+
 
 
 (** Here we are going to give a detailed explenation of how the new 
@@ -390,3 +390,122 @@ Defined.
 
 Effect Translate param_correct_list. 
 
+(* explain how param works on Vect *)
+
+Notation "x .1" := (projT1 x) (at level 3).
+Notation "x .2" := (projT2 x) (at level 3).
+
+Definition transport {A : Type} (P : A -> Type) {x y : A} (p : x = y) (u : P x) : P y :=
+  match p with eq_refl => u end.
+
+Notation "p # x" := (transport _ p x) (right associativity, at level 65, only parsing).
+
+Definition path_sigma {A : Type} (P : A -> Type) (u v : sigT P): 
+           u = v -> {p : v.1 = u.1 & u.2 = p # v.2}.
+Proof.
+  destruct 1. exists eq_refl. reflexivity.
+Defined.
+
+Axiom nat_ishset : forall (n m:nat) (e e' : n = m), e = e'.
+
+Inductive vector (A:Type) : nat -> Type :=
+  vnil : vector A 0
+| vcons : forall n, A -> vector A n -> vector A (S n).
+
+Arguments vnil {_}.
+Arguments vcons {_ _} _ _.
+
+Effect Translate vector. 
+
+Fixpoint vector_param_f_ (E : Type) (A : El Typeᵉ) (n : natᵒ E) (v : vectorᵒ E A n) {struct v}: Prop :=
+  match v with
+    vnilᵉ _ _ => True
+  | vconsᵉ _ _ n a v => vector_param_f_ E A n v
+  | _ => False
+  end.
+
+Effect Definition vector_param_f : forall A n, vector A n -> Prop.
+exact vector_param_f_.
+Defined.
+
+Instance param_vec A n : ParamMod (vector A n) := {| param := vector_param_f A n |}.
+
+Effect Translate param_vec. 
+
+Effect Definition param_vector_vnil : forall A, param (@vnil A).
+Proof.
+  intros. exact I.
+Defined. 
+
+Effect Definition param_vector_vcons : forall A a n (v:vector A n), param (vcons a v) -> param v.
+Proof.
+  intros E A a n v H. exact H.
+Defined.
+
+(* From Equations Require Import Equations DepElimDec HSets. *)
+
+(* Equations (noeqns) param_vector_vcons_trans (E : Type) (A : El Typeᵉ) *)
+(*           (a : El A) (n : natᵒ E) *)
+(*           (v : vectorᵒ E A n) *)
+(*           (H : vector_param E A (Sᵉ _ n) (vconsᵉ E A n a v)) : vector_param E A n v := *)
+(*   param_vector_vcons_trans E A ?(a) ?(n) ?(v) (vcons_param n a v X) := X. *)
+
+Effect Definition param_vector_raise : forall (e:Exception) A n, param (@raise (vector A n) e) -> False.
+Proof.
+  intros E A n e H. destruct H. 
+Defined. 
+
+(* Define specific eliminations: parametric for Prop, default raise for Type *)
+
+(* Fail because it requires it parametricity proof *)
+Fail Effect Translate vector_ind.
+
+Scheme vectorᵒ_rect := Induction for vectorᵒ Sort Type.
+Scheme vectorᵒ_ind := Induction for vectorᵒ Sort Prop.
+
+Effect Definition catch_vector : forall A (P : forall n, vector A n -> Type) (Pnil : P _ vnil) (Pcons : forall n (a:A) l, P n l -> P _ (vcons a l)%list) (Praise : forall e n, P n (raise e)) n (v:vector A n), P n v.
+Proof.
+  intros Exc A P Pnil Pcons Perr n v. induction v.
+  - exact Pnil.
+  - apply Pcons. auto. 
+  - exact (Perr e n).
+Defined.
+
+Effect Definition catch_vector_Prop : forall A (P : forall n, vector A n -> Prop) (Pnil : P _ vnil) (Pcons : forall n (a:A) l, P n l -> P _ (vcons a l)%list) (Praise : forall e n, P n (raise e)) n (v:vector A n), P n v.
+Proof.
+  intros Exc A P Pnil Pcons Perr n v. induction v.
+  - exact Pnil.
+  - apply Pcons. auto. 
+  - exact (Perr e n).
+Defined.
+
+Definition vector_ind' : forall A (P : forall n, vector A n -> Prop) (Pnil : P _ vnil) (Pcons : forall n (a:A) l, P n l -> P _ (vcons a l)%list) n (v:vector A n), param v -> P n v.
+Proof.
+  intros A P Pnil Pcons n v. induction v using catch_vector_Prop; auto.  
+  - intros Hcons. apply Pcons. apply IHv. exact (param_vector_vcons _ _ _ _ Hcons).
+  - intro H; destruct (param_vector_raise e A n H).
+Defined.
+
+Effect Translate vector_ind'.
+Effect Translate vector_rect.
+  
+(* correctness of param for vector *)
+
+Effect Definition raise_notvnil : forall A (e:Exception), (@vnil A) <> raise e.
+Proof.
+  compute; intros. inversion H.
+Defined. 
+
+Effect Definition raise_notvcons : forall A n (e:Exception) a (l:vector A n), vcons a l <> raise e.
+Proof.
+  compute; intros. inversion H.
+Defined. 
+
+Definition param_correct_vector A n (v:vector A n) : param v -> forall e, v <> raise e.
+  intro H. refine (vector_ind' A (fun n v => forall e : Exception, v <> raise e) _ _ n v H).
+  - exact (raise_notvnil A). 
+  - clear; intros n a l H e. exact (raise_notvcons A n e a l).
+Defined.
+
+Effect Translate param_correct_vector. 
+  
