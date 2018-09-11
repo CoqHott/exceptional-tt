@@ -508,4 +508,95 @@ Definition param_correct_vector A n (v:vector A n) : param v -> forall e, v <> r
 Defined.
 
 Effect Translate param_correct_vector. 
+
+
+Inductive test := default: test | func: (unit -> test) -> test.
+
+Effect Translate unit.
+Effect Translate test.
+
+Scheme testᵒ_rect := Induction for testᵒ Sort Type.
+Scheme testᵒ_ind := Induction for testᵒ Sort Prop.
+
+Effect Definition catch_test : forall (P : test -> Type) (Pdef : P default) (Pfun : forall f , (forall u, P (f u)) -> P (func f)) (Praise : forall e, P (raise e)) (l:test), P l.
+Proof.
+  intros E P Pdef Pfun Perr l. induction l.
+  - exact Pdef.
+  - apply Pfun. auto. 
+  - exact (Perr e).
+Defined.
+
+Effect Definition catch_test_Prop : forall (P : test -> Prop) (Pdef : P default) (Pfun : forall f , (forall u, P (f u)) -> P (func f)) (Praise : forall e, P (raise e)) (l:test), P l.
+Proof.
+  intros E P Pdef Pfun Perr l. induction l.
+  - exact Pdef.
+  - apply Pfun. auto. 
+  - exact (Perr e).
+Defined.
+
+(* explain how param works on nat *)
+
+Fixpoint test_param_f_ (E : Type) (v : testᵒ E) {struct v}: Prop :=
+  match v with
+    defaultᵉ _ => True
+  | funcᵉ _ f => forall u, test_param_f_ E (f u)
+  | _ => False
+  end.
+
+Effect Definition test_param_f : test -> Prop.
+exact test_param_f_.
+Defined.
+
+Instance param_test : ParamMod test := {| param := test_param_f |}.
+
+Effect Translate param_test. 
+
+Effect Definition param_test_def : param default.
+Proof.
+  intros. exact I. 
+Defined. 
+ 
+Effect Definition param_test_fun : forall f, param (func f) -> forall u, param (f u).
+Proof.
+  intros. exact (H _). 
+Defined. 
+
+Effect Definition param_test_raise : forall (e:Exception), param (@raise test e) -> False.
+Proof.
+  intros E e H. destruct H. 
+Defined. 
+
+(* Define specific eliminations: parametric for Prop, default raise for Type *)
+
+(* Fail because it requires it parametricity proof *)
+Fail Effect Translate test_ind.
+
+Definition test_ind' : forall (P : test -> Prop) (Pdef : P default) (Pfunc : forall f, (forall u, P (f u)) -> P (func f)) l, param l -> P l.
+Proof.
+  intros P Pdef Pfunc l. induction l using catch_test_Prop; auto. 
+  - intros Hfunc. apply Pfunc. intro u. apply H. exact (param_test_fun _ Hfunc _).
+  - intros H. destruct (param_test_raise e H).
+Defined.
+
+Effect Translate test_ind'.
+Effect Translate test_rect.
   
+(* correctness of param for nat *)
+
+Effect Definition raise_notdef : forall (e:Exception), default <> raise e.
+Proof.
+  compute; intros. inversion H.
+Defined. 
+
+Effect Definition raise_notfunc : forall (e:Exception) f, func f <> raise e.
+Proof.
+  compute; intros. inversion H.
+Defined. 
+
+Definition param_correct_test (l:test) : param l -> forall e, l <> raise e.
+  intro H. refine (test_ind' (fun l => forall e : Exception, l <> raise e) _ _ l H).
+  - exact raise_notdef. 
+  - clear; intros l H e. exact (raise_notfunc e l).
+Defined.
+
+Effect Translate param_correct_test. 
