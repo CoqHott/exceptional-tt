@@ -1046,18 +1046,20 @@ let param_lift param_offset c =
 let param_top_decls env is_ind_prop =
   List.firstn (if is_ind_prop then 2 else 1) (EConstr.rel_context env.env_tgt)
 
-let term_finish_in_ind sigma t ind_name = match EConstr.kind sigma t with
+let rec term_finish_in_ind sigma t ind_name = match EConstr.kind sigma t with
   | App (t, _) -> isInd sigma t && MutInd.equal (fst (fst (destInd sigma t))) ind_name
   | Ind (ind,_) -> MutInd.equal (fst ind) ind_name
+  | Prod (_, _, body) -> term_finish_in_ind sigma body ind_name
   | _ -> false
 
 let term_replace_finish_ind sigma t ind_name ntype ctx_number =
-  let (ind, maker) = match EConstr.kind sigma t with
-    | App (t, args) -> (fst (destInd sigma t), fun t -> mkApp (t, args))
-    | Ind (ind,_) -> (ind, fun t -> t)
+  let (ind_block, maker) = match EConstr.kind sigma t with
+    | App (t, args) -> (snd (fst (destInd sigma t)), fun t -> mkApp (t, args))
+    | Ind (ind,_) -> (snd ind, fun t -> t)
+    | Prod _ -> (0, fun _ -> t)
     | _ -> assert false
   in
-  let mind_rel = mkRel (ctx_number + ntype - (snd ind)) in
+  let mind_rel = mkRel (ctx_number + ntype - ind_block) in
   maker mind_rel
        
 let param_env_accum_up_to param_env n =
@@ -1130,17 +1132,14 @@ and otranslate_param_type env param_env sigma (ind, ind_e) c = match EConstr.kin
    let nenv = push_assum na (t, t_) env in
    let (sigma, nenv, param_env) = 
      if not is_ind_param then (sigma, nenv, 1 :: param_env)
-     else let (sigma, tp) = otranslate_type env sigma t in
-          let ntype = (fst (Inductive.lookup_mind_specif env.env_tgt (ind, 0))).mind_ntypes in
-          let tp = term_replace_finish_ind sigma tp ind ntype (Environ.nb_rel env.env_tgt) in
-          let tp = Vars.lift 1 (param_lift param_env tp) in
-          let tp = mkApp (tp, [|mkRel 1|]) in
+     else let (sigma, tp) = otranslate_param_type env param_env sigma (ind, ind_e) t in
           let assum_env = EConstr.push_rel (LocalAssum (na, tp)) nenv.env_tgt in
           let new_env = { nenv with env_tgt = assum_env; } in
           (sigma, new_env, 2 :: param_env)
    in
    let (sigma, uw) = otranslate_param_type nenv param_env sigma (ind, ind_e) u in
    let n = if is_ind_param then 3 else 2 in
+   let () = Feedback.msg_info (Pp.str "prev liftn") in
    let uw = Vars.liftn 1 (if is_ind_param then 4 else 3) uw in
    let uw = Vars.subst1 (mkApp (mkRel n, [| mkRel (n - 1) |])) uw in
    let ctx = param_top_decls nenv is_ind_param in
@@ -1299,6 +1298,23 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let sigma,_ = Typing.type_of env sigma param_instance in
 
   (sigma, instance_ty, param_instance)
+
+let catch_inductive err translator env name mind_d =
+  let sigma = Evd.from_env env in 
+  let (sigma, env) = make_context err translator env sigma in
+  let n = 0 in
+
+  let one_d = mind_d.mind_packets.(n) in 
+  let nindices = List.length one_d.mind_arity_ctxt - List.length mind_d.mind_params_ctxt in
+  let mind_arity_ctxt = List.map EConstr.of_rel_decl one_d.mind_arity_ctxt in 
+  let (param, arity) = List.chop nindices mind_arity_ctxt in
+  let param = List.filter (fun decl -> Rel.Declaration.is_local_assum decl) param in
+  let sort = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env.env_tgt sigma InType in
+  let (sigma, (ind, u)) = Evd.fresh_inductive_instance env.env_tgt sigma (name, n) in
+  let ind = mkIndU (ind, EInstance.make u) in
+  let predicate = it_mkProd_or_LetIn ind arity in
+  let predicate_args = one_d.mind_nrealargs in
+  ()
 
 (** Locally extend a translator to fake an inductive definition *)
 let pextend_inductive env (mutind0, _) mind0 mind =
