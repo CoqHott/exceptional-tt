@@ -239,6 +239,9 @@ Defined.
 
 Effect Translate param_correct_bool. 
 
+(* Definition deep_param (A:Type) `{ParamMod A} : list A -> Prop. *)
+  
+
 (* Define catch eliminator on Prop and Type *)
 
 Scheme natᵒ_rect := Induction for natᵒ Sort Type.
@@ -347,7 +350,10 @@ Defined.
  
 Effect Definition param_list_cons : forall A a (l:list A), param (cons a l) -> param l.
 Proof.
-  intros. inversion H. exact H1. 
+  intros. cbn in *.
+  
+  
+  inversion H. exact H1. 
 Defined. 
 
 Effect Definition param_list_raise : forall (e:Exception) A, param (@raise (list A) e) -> False.
@@ -360,16 +366,26 @@ Defined.
 (* Fail because it requires it parametricity proof *)
 Fail Effect Translate list_ind.
 
-Definition list_ind : forall A (P : list A -> Prop) (Pnil : P nil) (PS : forall a l, P l -> P (cons a l)) l, param l -> P l.
-Proof.
-  intros A P Pnil Pcons l. induction l using catch_list_Prop; auto. 
-  - intros Hcons. apply Pcons. apply IHl. exact (param_list_cons _ _ _ Hcons).
-  - intros H. destruct (param_list_raise e A H).
-Defined.
+Scheme list_param_ind := Induction for list_param Sort Prop.
 
-Effect Translate list_ind.
+Effect Definition list_ind : forall A (P : list A -> Prop) (Pnil : P nil) (PS : forall a l, P l -> P (cons a l)) l, param l -> P l.
+Proof.
+  intros E A P Pnil Pcons l param_l. induction param_l.
+  - exact Pnil.
+  - apply Pcons. exact IHparam_l. 
+Defined. 
+
+(* Definition list_ind : forall A (P : list A -> Prop) (Pnil : P nil) (PS : forall a l, P l -> P (cons a l)) l, param l -> P l. *)
+(* Proof. *)
+(*   intros A P Pnil Pcons l. *)
+(*   induction l using catch_list_Prop; auto.  *)
+(*   - intros Hcons. apply Pcons. apply IHl. exact (param_list_cons _ _ _ Hcons). *)
+(*   - intros H. destruct (param_list_raise e A H). *)
+(* Defined. *)
+
+(* Effect Translate list_ind. *)
 Effect Translate list_rect.
-  
+
 (* correctness of param for nat *)
 
 Effect Definition raise_notnil : forall A (e:Exception), (@nil A) <> raise e.
@@ -417,42 +433,14 @@ Arguments vcons {_ _} _ _.
 
 Effect Translate vector. 
 
-Fixpoint vector_param_f_ (E : Type) (A : El Typeᵉ) (n : natᵒ E) (v : vectorᵒ E A n) {struct v}: Prop :=
-  match v with
-    vnilᵉ _ _ => True
-  | vconsᵉ _ _ n a v => vector_param_f_ E A n v
-  | _ => False
-  end.
-
-Effect Definition vector_param_f : forall A n, vector A n -> Prop.
-exact vector_param_f_.
-Defined.
-
-Instance param_vec A n : ParamMod (vector A n) := {| param := vector_param_f A n |}.
-
-Effect Translate param_vec. 
-
 Effect Definition param_vector_vnil : forall A, param (@vnil A).
 Proof.
-  intros. exact I.
+  intros. constructor.
 Defined. 
 
-Effect Definition param_vector_vcons : forall A a n (v:vector A n), param (vcons a v) -> param v.
+Effect Definition param_vector_vcons : forall A n a (v:vector A n), param v -> param (vcons a v).
 Proof.
-  intros E A a n v H. exact H.
-Defined.
-
-(* From Equations Require Import Equations DepElimDec HSets. *)
-
-(* Equations (noeqns) param_vector_vcons_trans (E : Type) (A : El Typeᵉ) *)
-(*           (a : El A) (n : natᵒ E) *)
-(*           (v : vectorᵒ E A n) *)
-(*           (H : vector_param E A (Sᵉ _ n) (vconsᵉ E A n a v)) : vector_param E A n v := *)
-(*   param_vector_vcons_trans E A ?(a) ?(n) ?(v) (vcons_param n a v X) := X. *)
-
-Effect Definition param_vector_raise : forall (e:Exception) A n, param (@raise (vector A n) e) -> False.
-Proof.
-  intros E A n e H. destruct H. 
+  intros. constructor. exact H. 
 Defined. 
 
 (* Define specific eliminations: parametric for Prop, default raise for Type *)
@@ -479,14 +467,31 @@ Proof.
   - exact (Perr e n).
 Defined.
 
-Definition vector_ind' : forall A (P : forall n, vector A n -> Prop) (Pnil : P _ vnil) (Pcons : forall n (a:A) l, P n l -> P _ (vcons a l)%list) n (v:vector A n), param v -> P n v.
+Scheme vector_param_ind := Induction for vector_param Sort Prop.
+
+Effect Definition vector_ind' : forall A (P : forall n (v:vector A n), param v -> Prop) (Pnil : P _  vnil (param_vector_vnil _)) (Pcons : forall n (a:A) v (Hv : param v), P n v Hv -> P _ (vcons a v) (param_vector_vcons _ _ _ _ Hv)) n (v:vector A n) (Hv : param v), P n v Hv.
 Proof.
-  intros A P Pnil Pcons n v. induction v using catch_vector_Prop; auto.  
-  - intros Hcons. apply Pcons. apply IHv. exact (param_vector_vcons _ _ _ _ Hcons).
-  - intro H; destruct (param_vector_raise e A n H).
+  cbn. intros A P Pnil Pcons n v v0 Hv0. induction Hv0; auto. 
 Defined.
 
-Effect Translate vector_ind'.
+Definition param_vector_vcons_rev (A : Type) (a : A) (n : nat)
+          (v : vector A n) (H : param (vcons a v)) : param v.
+  pose (P := fun n => match n return vector A n -> Prop with
+                          0 => fun _ => True
+                        | S n => fun v => match v with
+                                            vnil => True
+                                          | vcons a v =>  param v end end).
+  change (P (S n) (vcons a v)).
+  refine (vector_ind' _ (fun n v _ => P n v) _ _ _ _ H).
+  - exact I.
+  - cbn. auto.
+Defined. 
+
+Effect Definition param_vector_raise : forall (e:Exception) A n, param (@raise (vector A n) e) -> False.
+Proof.
+  intros E e A n H. inversion H.
+Defined. 
+
 Effect Translate vector_rect.
   
 (* correctness of param for vector *)
@@ -502,13 +507,12 @@ Proof.
 Defined. 
 
 Definition param_correct_vector A n (v:vector A n) : param v -> forall e, v <> raise e.
-  intro H. refine (vector_ind' A (fun n v => forall e : Exception, v <> raise e) _ _ n v H).
+  intro H. refine (vector_ind' A (fun n v _ => forall e : Exception, v <> raise e) _ _ n v H).
   - exact (raise_notvnil A). 
-  - clear; intros n a l H e. exact (raise_notvcons A n e a l).
+  - clear; intros n a l H _ e. exact (raise_notvcons A n e a l).
 Defined.
 
 Effect Translate param_correct_vector. 
-
 
 Inductive test := default: test | func: (unit -> test) -> test.
 
@@ -536,15 +540,19 @@ Defined.
 
 (* explain how param works on nat *)
 
-Fixpoint test_param_f_ (E : Type) (v : testᵒ E) {struct v}: Prop :=
-  match v with
-    defaultᵉ _ => True
-  | funcᵉ _ f => forall u, test_param_f_ E (f u)
-  | _ => False
-  end.
+Inductive test_param_ (E : Type) : testᵒ E -> Prop :=
+    default_param_ : test_param_ E (defaultᵉ E)
+  | func_param_ : forall f : unitᵒ E -> testᵒ E, (forall u, test_param_ E (f u)) -> test_param_ E (funcᵉ E f).
+
+(* Fixpoint test_param_f_ (E : Type) (v : testᵒ E) {struct v}: Prop := *)
+(*   match v with *)
+(*     defaultᵉ _ => True *)
+(*   | funcᵉ _ f => forall u, test_param_f_ E (f u) *)
+(*   | _ => False *)
+(*   end. *)
 
 Effect Definition test_param_f : test -> Prop.
-exact test_param_f_.
+exact test_param_.
 Defined.
 
 Instance param_test : ParamMod test := {| param := test_param_f |}.
@@ -553,17 +561,18 @@ Effect Translate param_test.
 
 Effect Definition param_test_def : param default.
 Proof.
-  intros. exact I. 
+  econstructor. 
+  (* intros. exact I.  *)
 Defined. 
  
 Effect Definition param_test_fun : forall f, param (func f) -> forall u, param (f u).
 Proof.
-  intros. exact (H _). 
+  intros. inversion H. apply H1. 
 Defined. 
 
 Effect Definition param_test_raise : forall (e:Exception), param (@raise test e) -> False.
 Proof.
-  intros E e H. destruct H. 
+  intros E e H. inversion H. 
 Defined. 
 
 (* Define specific eliminations: parametric for Prop, default raise for Type *)
