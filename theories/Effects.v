@@ -60,6 +60,14 @@ Class ParamModᵉ (E: Type) (A: @El E (@Typeᵉ E)) := {
 }.
 Unset Primitive Projections.
 
+(** 
+    Providing Exception and raise construction to work on the source theory. 
+    This terms only reify the underlying exceptinal Type 
+*)
+Axiom Exception: Type.
+Definition Exceptionᵉ (E: Type): type E := TypeVal E E (fun e => e).
+Axiom raise: forall (A: Type), Exception -> A. 
+Definition raiseᵉ (E: Type) (A: @El E (@Typeᵉ E)) (e: @El E (Exceptionᵉ E)) := Err A e.
 
 (******************************)
 (*** Test handling of sorts ***)

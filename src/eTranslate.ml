@@ -135,15 +135,17 @@ let typeval_e = ConstructRef ((MutInd.make1 (make_kn "type"), 0), 1)
 let param_mod = MutInd.make1 (make_kn "ParamMod")
 let param_mod_e = MutInd.make1 (make_kn "ParamModᵉ")
 
-let default_mutind = MutInd.make1 (make_kn "effect_default")
-let default_mutind_e = MutInd.make1 (make_kn "effect_defaultᵒ")
-let default_mutind_r = MutInd.make1 (make_kn "effect_defaultᴿ")
 let param_cst = Constant.make1 (make_kn "param")
 let param_cst_e = Constant.make1 (make_kn "paramᵉ")
-let param_cst_r = Constant.make1 (make_kn "paramᴿ")
-
 let param_def = ConstRef param_cst
 let param_def_e = ConstRef param_cst_e
+
+let tm_exception = Constant.make1 (make_kn "Exception")
+let tm_exception_e = Constant.make1 (make_kn "Exceptionᵉ")
+
+let tm_raise = Constant.make1 (make_kn "raise")
+let tm_raise_e = Constant.make1 (make_kn "raiseᵉ")
+
 
 
 let name_errtype = Id.of_string "E"
@@ -1139,7 +1141,6 @@ and otranslate_param_type env param_env sigma (ind, ind_e) c = match EConstr.kin
    in
    let (sigma, uw) = otranslate_param_type nenv param_env sigma (ind, ind_e) u in
    let n = if is_ind_param then 3 else 2 in
-   let () = Feedback.msg_info (Pp.str "prev liftn") in
    let uw = Vars.liftn 1 (if is_ind_param then 4 else 3) uw in
    let uw = Vars.subst1 (mkApp (mkRel n, [| mkRel (n - 1) |])) uw in
    let ctx = param_top_decls nenv is_ind_param in
@@ -1314,6 +1315,9 @@ let catch_inductive err translator env name mind_d =
   let ind = mkIndU (ind, EInstance.make u) in
   let predicate = it_mkProd_or_LetIn ind arity in
   let predicate_args = one_d.mind_nrealargs in
+  let map n =
+    ()
+  in
   ()
 
 (** Locally extend a translator to fake an inductive definition *)

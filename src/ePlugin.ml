@@ -32,7 +32,16 @@ type translator = ETranslate.translator
 
 let empty_translator = 
   let open ETranslate in 
-  let refss = Cmap.add param_cst (GlobGen (ConstRef param_cst_e)) Cmap.empty in
+  let refss = [
+      (param_cst, param_cst_e);
+      (tm_exception, tm_exception_e);
+      (tm_raise, tm_raise_e)
+    ]
+  in
+  let map acc (s,t) = 
+    Cmap.add s (GlobGen (ConstRef t)) acc
+  in
+  let refss = List.fold_left map Cmap.empty refss in 
   let inds = Mindmap.add param_mod (GlobGen param_mod_e) Mindmap.empty in
   let prefs = Cmap.empty in
   let pinds = Mindmap.empty in
@@ -281,9 +290,10 @@ let one_ind_in_prop ind_arity =
   | TemplateArity _ -> false
   
 let instantiate_parametric_modality err translator (name, n) ext  =
+  let module D = Declarations in 
   let env = Global.env () in
   let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
-  let arity_mind = Array.map (fun ind -> Declarations.(ind.mind_arity) ) mind.mind_packets in
+  let arity_mind = Array.map (fun ind -> Declarations.(ind.mind_arity) ) D.(mind.mind_packets) in
 
   if Array.exists (fun i -> one_ind_in_prop i) arity_mind then
     []
@@ -300,6 +310,15 @@ let instantiate_parametric_modality err translator (name, n) ext  =
 
   let ((_, kn), _) = Declare.declare_mind mind_ in
   let name_param = Global.mind_of_delta_kn kn in 
+  let () = List.iter 
+             (fun id -> 
+               let id_ind = Nameops.add_suffix id "_ind" in
+               let reference = Misctypes.AN (Libnames.Ident (None, id)) in
+               let scheme = Vernacexpr.InductionScheme (true, reference, Misctypes.GProp) in
+               Indschemes.do_scheme [Some (None, id_ind), scheme]
+             )
+             Entries.(List.map (fun i -> i.mind_entry_typename) mind_.mind_entry_inds)
+  in
 
   let env = Global.env () in
   let map i one_e =
@@ -308,7 +327,7 @@ let instantiate_parametric_modality err translator (name, n) ext  =
 
     let (sigma, base_instance_ty, pinstance) = func err translator env names (one_e,i) in
     
-    let base_id = (Id.to_string mind.mind_packets.(i).mind_typename) ^ "_instance" in
+    let base_id = (Id.to_string D.(mind.mind_packets.(i).mind_typename)) ^ "_instance" in
     let id = Id.of_string base_id in
     let uctx = UState.context (Evd.evar_universe_context sigma) in
 
