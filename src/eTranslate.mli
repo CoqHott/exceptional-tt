@@ -46,26 +46,6 @@ val translate_inductive :
   effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
 
-val ptranslate :
-  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
-
-val ptranslate_type :
-  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
-
-val ptranslate_inductive :
-  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
-    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
-
-val wtranslate :
-  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
-
-val wtranslate_type :
-  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
-
-val wtranslate_inductive :
-  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
-    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
-
 val param_mutual_inductive :
   effect -> translator -> Environ.env -> MutInd.t * MutInd.t -> Declarations.mutual_inductive_body -> 
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry 
@@ -74,11 +54,5 @@ val param_instance_inductive :
   effect -> translator -> Environ.env -> MutInd.t * MutInd.t * MutInd.t-> 
     Declarations.one_inductive_body * int -> Evd.evar_map * EConstr.t * EConstr.t
 
-val wparam_mutual_inductive :
-  effect -> translator -> Environ.env -> MutInd.t-> Declarations.mutual_inductive_body -> 
-    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry 
-
-val param_definition :
-  effect -> translator -> Environ.env -> MutInd.t * MutInd.t -> 
-    Declarations.mutual_inductive_body -> 
-    Entries.mutual_inductive_entry -> Evd.evar_map * EConstr.t list
+val parametric_induction :
+  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body -> unit

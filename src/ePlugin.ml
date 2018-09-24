@@ -225,36 +225,6 @@ let instantiate_error env sigma err gen c_ = match err with
     (sigma, mkApp (c_, [| err |]))
   else (sigma, c_)
 
-let ptranslate_constant err translator cst ids =
-  let id = on_one_id ptranslate_name ids cst in
-  (** Translate the type *)
-  let env = Global.env () in
-  let sigma = Evd.from_env env in
-  let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
-  let (sigma, (_, u)) = Evd.fresh_constant_instance env sigma cst in
-  let typ = Vars.subst_instance_constr u typ in
-  let gen, c_ =
-    try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
-    with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
-  in
-  let typ = EConstr.of_constr typ in
-  let (sigma, typ) = ETranslate.ptranslate_type err translator env sigma typ in
-  let (sigma, c_) = Evd.fresh_global env sigma c_ in
-  let (sigma, c_) = ETranslate.instantiate_error err env sigma gen (EConstr.of_constr c_) in
-  let typ = EConstr.Vars.subst1 c_ typ in
-  let sigma, _ = Typing.type_of env sigma typ in
-  let body = Option.get (Global.body_of_constant cst) in
-  let body = EConstr.of_constr body in
-  let (sigma, body) = ETranslate.ptranslate err translator env sigma body in
-  let evdref = ref sigma in
-  let () = Typing.e_check env evdref body typ in
-  let sigma = !evdref in
-  let body = EConstr.to_constr sigma body in
-  let typ = EConstr.to_constr sigma typ in
-  let uctx = UState.context (Evd.evar_universe_context sigma) in
-  let cst_ = declare_constant id uctx body typ in
-  [ExtConstant (cst, ConstRef cst_)]
-
 let primitives_from_declaration env (ind: Names.mutual_inductive) =
   let open Declarations in 
   let (mind, _) = Inductive.lookup_mind_specif env (ind, 0) in  
@@ -288,75 +258,78 @@ let one_ind_in_prop ind_arity =
   match ind_arity with
   | RegularArity ar -> is_prop_sort ar.mind_sort
   | TemplateArity _ -> false
+
+let typeclass_declaration err translator ind_names_decl ind_name param_ind =
+  let env = Global.env () in
+  let func = ETranslate.param_instance_inductive in
   
-let instantiate_parametric_modality err translator (name, n) ext  =
+  let (sigma, base_instance_ty, pinstance) = func err translator env ind_names_decl param_ind in
+  
+  let base_id = (Id.to_string ind_name) ^ "_instance" in
+  let id = Id.of_string base_id in
+  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  
+  (* Polymorphic Axiom declaration *)
+  let pe = (None, false, (EConstr.to_constr sigma base_instance_ty, uctx), None) in
+  let pd = Entries.ParameterEntry pe in
+  
+  let decl = (pd, IsAssumption Definitional) in
+  let instance_name = Declare.declare_constant id decl in
+  let _,dirPath,label = Constant.repr3 instance_name in
+  let qualid = Libnames.make_qualid dirPath (Label.to_id label) in
+  let () = Classes.existing_instance true (Libnames.Qualid (None, qualid)) None in
+  (* -- *)
+  
+  let pid = translate_name id in
+  let tp = EConstr.to_constr sigma pinstance in
+  let pinstance_name = declare_constant_wo_ty pid uctx tp in
+  ExtConstant (instance_name, ConstRef pinstance_name)
+
+let instantiate_parametric_modality err translator (name, n) ext = 
   let module D = Declarations in 
   let env = Global.env () in
   let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
-  let arity_mind = Array.map (fun ind -> Declarations.(ind.mind_arity) ) D.(mind.mind_packets) in
-
-  if Array.exists (fun i -> one_ind_in_prop i) arity_mind then
-    []
-  else
-  let name_e = List.find_map
-                 (fun d -> 
-                   match d with 
-                   | ExtInductive (n,m) when MutInd.equal name n -> Some m 
-                   | _ -> None ) 
-                 ext
+  let find_map = function
+    | ExtInductive (n,m) when MutInd.equal name n -> Some m
+    | _ -> None
   in
+  let name_e = List.find_map find_map ext in 
   let mind' = EUtil.process_inductive mind in
   let mind_ = ETranslate.param_mutual_inductive err translator env (name, name_e) mind mind' in
 
   let ((_, kn), _) = Declare.declare_mind mind_ in
   let name_param = Global.mind_of_delta_kn kn in 
-  let () = List.iter 
-             (fun id -> 
-               let id_ind = Nameops.add_suffix id "_ind" in
-               let reference = Misctypes.AN (Libnames.Ident (None, id)) in
-               let scheme = Vernacexpr.InductionScheme (true, reference, Misctypes.GProp) in
-               Indschemes.do_scheme [Some (None, id_ind), scheme]
-             )
-             Entries.(List.map (fun i -> i.mind_entry_typename) mind_.mind_entry_inds)
+  let iter id = 
+    let id_ind = Nameops.add_suffix id "_ind" in
+    let reference = Misctypes.AN (Libnames.Ident (None, id)) in
+    let scheme = Vernacexpr.InductionScheme (true, reference, Misctypes.GProp) in
+    Indschemes.do_scheme [Some (None, id_ind), scheme]
   in
+  let mind_names = Entries.(List.map (fun i -> i.mind_entry_typename) mind_.mind_entry_inds) in
+  let () = List.iter iter mind_names in
 
+  let ind_name_decl = (name, name_e, name_param) in
+  let map i one_d =
+    typeclass_declaration err translator ind_name_decl D.(one_d.mind_typename) (one_d, i)
+  in
+  let instances = List.map_i map 0 (Array.to_list D.(mind.mind_packets)) in
   let env = Global.env () in
-  let map i one_e =
-    let func = ETranslate.param_instance_inductive in
-    let names = (name, name_e, name_param) in
+  let _ = ETranslate.parametric_induction err translator env name mind in
+  instances  
 
-    let (sigma, base_instance_ty, pinstance) = func err translator env names (one_e,i) in
-    
-    let base_id = (Id.to_string D.(mind.mind_packets.(i).mind_typename)) ^ "_instance" in
-    let id = Id.of_string base_id in
-    let uctx = UState.context (Evd.evar_universe_context sigma) in
+let try_instantiate_parametric_modality err translator (name, n) ext  =
+  let module D = Declarations in 
+  let env = Global.env () in
+  let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
+  let arity_mind = Array.map (fun ind -> D.(ind.mind_arity) ) D.(mind.mind_packets) in
 
-    (* Polymorphic Axiom declaration *)
-    let pe = (None, false, (EConstr.to_constr sigma base_instance_ty, uctx), None) in
-    let pd = Entries.ParameterEntry pe in
-    
-    let decl = (pd, IsAssumption Definitional) in
-    let instance_name = Declare.declare_constant id decl in
-    let _,dirPath,label = Constant.repr3 instance_name in
-    let qualid = Libnames.make_qualid dirPath (Label.to_id label) in
-    let () = Classes.existing_instance true (Libnames.Qualid (None, qualid)) None in
-    (* -- *)
-
-    let pid = translate_name id in
-    let tp = EConstr.to_constr sigma pinstance in
-    let pinstance_name = declare_constant_wo_ty pid uctx tp in
-    ExtConstant (instance_name, ConstRef pinstance_name)
-  in
-  let instances = List.map_i map 0 (Array.to_list Declarations.(mind.mind_packets)) in
-  instances
+  if Array.exists (fun i -> one_ind_in_prop i) arity_mind then []
+  else instantiate_parametric_modality err translator (name, n) ext
 
 let translate_inductive err translator ind =
   let base_ext = translate_inductive_gen ETranslate.translate_inductive err translator ind in
-  let inst = instantiate_parametric_modality err translator ind base_ext in
+  let inst = try_instantiate_parametric_modality err translator ind base_ext in
   base_ext @ inst
-                          
-let ptranslate_inductive err translator ind =
-  translate_inductive_gen ETranslate.ptranslate_inductive err translator ind
 
 let msg_translate = function
 | ExtConstant (cst, gr) ->
@@ -392,22 +365,6 @@ let translate ?exn ?names gr =
   let msg = prlist_with_sep fnl msg_translate ans in
   Feedback.msg_info msg
 
-let ptranslate ?exn ?names gr =
-  let ids = names in
-  let err = Option.map Nametab.global exn in
-  let gr = Nametab.global gr in
-  let translator = !translator in
-  let ans = match gr with
-  | ConstRef cst -> ptranslate_constant err translator cst ids
-  | IndRef ind -> ptranslate_inductive err translator ind 
-  | ConstructRef _ -> user_err (str "Use the translation over the corresponding inductive type instead.")
-  | VarRef _ -> user_err (str "Variable translation not handled.")
-  in
-  let ext = ExtendEffect (ExtParam, err, ans) in
-  let () = Lib.add_anonymous_leaf (in_translator ext) in
-  let msg = prlist_with_sep fnl msg_translate ans in
-  Feedback.msg_info msg
-
 (** Implementation in the forcing layer *)
 
 let implement ?exn id typ =
@@ -438,40 +395,6 @@ let implement ?exn id typ =
   let () = Lemmas.start_proof_univs id_ kind sigma typ_ hook in
   ()
 
-let pimplement ?exn gr =
-  let env = Global.env () in
-  let translator = !translator in
-  let err = Option.map Nametab.global exn in
-  let cst = match Nametab.global gr with
-  | ConstRef cst -> cst
-  | _ -> user_err (str "Parametricity can only be implemented for constants")
-  in
-  let id = Label.to_id (Constant.label cst) in
-  let sigma = Evd.from_env env in
-  (** Drop the context as translation doesn't care. TODO: handle this properly. *)
-  let (typ, _) = Global.type_of_global_in_context env (ConstRef cst) in
-  let gen, c_ =
-    try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
-    with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
-  in
-  let typ = EConstr.of_constr typ in
-  let (sigma, typ) = ETranslate.ptranslate_type err translator env sigma typ in
-  let (sigma, c_) = Evd.fresh_global env sigma c_ in
-  let (sigma, c_) = instantiate_error env sigma err gen c_ in
-  let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
-  (** Retype for constraints *)
-  let (sigma, _) = Typing.type_of env sigma typ in
-  let hook _ dst =
-    (** Attach the axiom to the implementation *)
-    let ext = ExtendEffect (ExtParam, err, [ExtConstant (cst, dst)]) in
-    Lib.add_anonymous_leaf (in_translator ext)
-  in
-  let hook ctx = Lemmas.mk_hook hook in
-  let kind = Global, false, DefinitionBody Definition in
-  let idr = ptranslate_name id in
-  let () = Lemmas.start_proof_univs idr kind sigma typ hook in
-  ()
-
 (** Error handling *)
 
 let pr_global = function
@@ -495,123 +418,6 @@ let _ = register_handler begin function
 | _ -> raise Unhandled
 end
 
-
-(** New weakly Translation *)
-(** Arity check *)
-
-let wtranslate_constant err translator cst ids =
-  let id = on_one_id wtranslate_name ids cst in
-  (** Translate the type *)
-  let env = Global.env () in
-  let sigma = Evd.from_env env in
-  let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
-  let (sigma, (_, u)) = Evd. fresh_constant_instance env sigma cst in
-  let typ = Vars.subst_instance_constr u typ in
-  let gen, c_ =
-    try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
-    with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
-  in
-  let typ = EConstr.of_constr typ in
-  let (sigma, typ) = ETranslate.wtranslate_type err translator env sigma typ in
-  let (sigma, c_) = Evd.fresh_global env sigma c_ in
-  let (sigma, c_) = ETranslate.instantiate_error err env sigma gen (EConstr.of_constr c_) in
-  let typ = EConstr.Vars.subst1 c_ typ in
-  let sigma, _ = Typing.type_of env sigma typ in
-  let body = Option.get (Global.body_of_constant cst) in
-  let body = EConstr.of_constr body in
-  let (sigma, body) = ETranslate.wtranslate err translator env sigma body in
-  let evdref = ref sigma in
-  let () = Typing.e_check env evdref body typ in
-  let sigma = !evdref in
-  let body = EConstr.to_constr sigma body in
-  let typ = EConstr.to_constr sigma typ in
-  let uctx = UState.context (Evd.evar_universe_context sigma) in
-  let cst_ = declare_constant id uctx body typ in
-  [ExtConstant (cst, ConstRef cst_)]
-    
-let instantiate_wparametric_modality err translator (name, n) ext  =
-  let env = Global.env () in
-  let (mind, _ as specif) = Inductive.lookup_mind_specif env (name, 0) in
-
-  let mind' = EUtil.process_inductive mind in
-  let mind_ = ETranslate.wparam_mutual_inductive err translator env name mind mind' in
-  let ((_, kn), _) = Declare.declare_mind mind_ in
-  let ind_ = Global.mind_of_delta_kn kn in
-
-  let env = Global.env () in
-  let (sigma, params) = ETranslate.param_definition err translator env (name, ind_) mind mind' in
-  let map n param =
-    let open Entries in 
-    let body = EConstr.to_constr sigma param in
-    let uctx = UState.context (Evd.evar_universe_context sigma) in
-    let ce = Declare.definition_entry  ~univs:uctx body in
-    let cd = Entries.DefinitionEntry ce in
-    let decl = (cd, IsProof Lemma) in
-    let id = (List.nth mind'.mind_entry_inds n).mind_entry_typename in
-    let id = translate_param_name id in
-    let () = Feedback.msg_info (Id.print id) in
-    let cst_ = Declare.declare_constant id decl in
-    ExtParamConstant (name, ConstRef cst_)
-  in
-  let extension = List.mapi map params in
-  ExtParamInductive (name, ind_) :: extension
-    
-let wtranslate_inductive err translator ind =
-  let ext = translate_inductive_gen ETranslate.wtranslate_inductive err translator ind in 
-  let param_ext = instantiate_wparametric_modality err translator ind ext in
-  ext @ param_ext
-                          
-let wtranslate ?exn ?names gr =
-  let ids = names in
-  let err = Option.map Nametab.global exn in
-  let gr = Nametab.global gr in
-  let translator = !translator in
-  let ans = match gr with
-  | ConstRef cst -> wtranslate_constant err translator cst ids
-  | IndRef ind -> wtranslate_inductive err translator ind 
-  | ConstructRef _ -> user_err (str "Use the translation over the corresponding inductive type instead.")
-  | VarRef _ -> user_err (str "Variable translation not handled.")
-  in
-  let ext = ExtendEffect (ExtWeakly, err, ans) in
-  let () = Lib.add_anonymous_leaf (in_translator ext) in
-  let msg = prlist_with_sep fnl msg_translate ans in
-  Feedback.msg_info msg
-
-let wimplement ?exn gr =
-  let env = Global.env () in
-  let translator = !translator in
-  let err = Option.map Nametab.global exn in
-  let cst = match Nametab.global gr with
-  | ConstRef cst -> cst
-  | _ -> user_err (str "Weak parametricity can only be implemented for constants")
-  in
-  let id = Label.to_id (Constant.label cst) in
-  let sigma = Evd.from_env env in
-  let (typ, uctx) = Global.type_of_global_in_context env (ConstRef cst) in
-  let (sigma, (_, u)) = Evd.fresh_constant_instance env sigma cst in
-  let typ = Vars.subst_instance_constr u typ in
-  let gen, c_ =
-    try ETranslate.get_instance err (Cmap.find cst translator.ETranslate.refs)
-    with Not_found -> raise (ETranslate.MissingGlobal (err, ConstRef cst))
-  in
-  let typ = EConstr.of_constr typ in
-  let (sigma, typ) = ETranslate.wtranslate_type err translator env sigma typ in
-  let (sigma, c_) = Evd.fresh_global env sigma c_ in
-  let (sigma, c_) = instantiate_error env sigma err gen c_ in
-  let typ = EConstr.Vars.subst1 (EConstr.of_constr c_) typ in
-  let (sigma, _) = Typing.type_of env sigma typ in
-  let hook _ dst =
-    (** Attach the axiom to the implementation *)
-    let ext = ExtendEffect (ExtWeakly, err, [ExtConstant (cst, dst)]) in
-    Lib.add_anonymous_leaf (in_translator ext)
-  in
-  let hook ctx = Lemmas.mk_hook hook in
-  let (sigma, _) = Typing.type_of env sigma typ in
-  let kind = Global, false, DefinitionBody Definition in
-  let idr = wtranslate_name id in
-  let () = Lemmas.start_proof_univs idr kind sigma typ hook in
-  ()
-
 (** List translate *)
 
 module Generic = struct
@@ -628,7 +434,3 @@ open Generic
                       
 let list_translate ?exn gr_list =
   generic_translate ?exn gr_list translate
-let list_ptranslate ?exn gr_list = 
-  generic_translate ?exn gr_list ptranslate
-let list_wtranslate ?exn gr_list = 
-  generic_translate ?exn gr_list wtranslate
