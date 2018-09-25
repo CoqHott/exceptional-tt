@@ -1034,24 +1034,30 @@ let catch_inductive err translator env name mind_d =
   in
   ()
 
-let rec induction_generator sigma predicate params_number constr_ty (ind, n_ind) = 
+let rec induction_generator sigma params_number constr_ty ind n_ind = 
 match EConstr.kind sigma constr_ty with
 | App (t, args) -> 
    let _, arity = Array.chop params_number args in
-   mkApp (predicate, Array.append arity [| mkRel 1 |]) 
+   let arity = Array.map (fun a -> Vars.lift 1 a) arity in
+   mkApp (mkRel 2, Array.append arity [| mkRel 1 |]) 
+| Ind (name, _) ->
+   mkApp (mkRel 2, [| mkRel 1 |])
 | Prod (na, t, b) ->
    let end_in_ind = term_finish_in_ind_exact sigma t ind n_ind in
-   let rest = induction_generator sigma predicate params_number b (ind, n_ind) in 
+   let rest = induction_generator sigma params_number b ind n_ind in 
+   let () = Feedback.msg_info (Pp.str "rest_gen: " ++ Printer.pr_econstr rest) in
    let body = 
      if end_in_ind then
-       let ty = induction_generator sigma predicate params_number t (ind, n_ind) in
+       let ty = induction_generator sigma params_number t ind n_ind in
        let ty = Vars.lift 1 ty in
+       let rest = Vars.liftn 3 2 rest in
        let rest = Vars.subst1 (mkApp (mkRel 3, [| mkRel 2 |])) rest in
        mkProd (Anonymous, ty, rest)
      else
+       let rest = Vars.liftn 2 2 rest in
        Vars.subst1 (mkApp (mkRel 2, [| mkRel 1 |])) rest
    in
-   mkProd (na, t, body)
+   mkProd (na, Vars.lift 1 t, body)
 | _ -> constr_ty
 
 let parametric_induction err translator env name mind_d =
@@ -1065,7 +1071,7 @@ let parametric_induction err translator env name mind_d =
   let nindices = List.length one_d.mind_arity_ctxt - List.length mind_d.mind_params_ctxt in 
   let nparams = Declarations.(mind_d.mind_nparams) in
   let mind_arity_ctxt = List.map EConstr.of_rel_decl one_d.mind_arity_ctxt in
-  let (param_ctx, arity_ctx) = List.chop nindices mind_arity_ctxt in 
+  let (arity_ctx, param_ctx) = List.chop nindices mind_arity_ctxt in 
   let real_param_ctx = List.filter (fun decl -> Rel.Declaration.is_local_assum decl) param_ctx in 
   let (sigma, sort) = Evd.fresh_sort_in_family env.env_tgt sigma InProp in 
   
@@ -1073,20 +1079,30 @@ let parametric_induction err translator env name mind_d =
   let ind = mkIndU (ind, EInstance.make u) in
   let app_args = List.init (List.length one_d.mind_arity_ctxt) (fun i -> mkRel (i + 1)) in
   let app_ind = applist (ind, List.rev app_args) in
-  let predicate = it_mkProd_or_LetIn (mkProd (Anonymous, app_ind, (mkSort sort))) arity_ctx in  
+  let predicate = it_mkProd_or_LetIn (mkProd (Anonymous, app_ind, (mkSort sort))) arity_ctx in 
+  let substl_ind = List.init mind_d.mind_ntypes (fun i -> mkInd (name, i)) in
   let decompose_map cty = 
-    snd (EConstr.decompose_prod_n_assum sigma nparams cty)
+    let _, non_param_cty = EConstr.decompose_prod_n_assum sigma nparams cty in
+    let non_param_cty = Vars.substnl substl_ind nparams non_param_cty in
+    non_param_cty
   in
   let mind_user_lc = Array.to_list one_d.mind_user_lc in
   let mind_user_lc = List.map  EConstr.of_constr mind_user_lc in
   let constr_types = List.map decompose_map mind_user_lc in
+  let params_args = List.init nparams (fun n -> mkRel (n + 2)) in
   let map i constr =
-    let constr_pred = induction_generator sigma predicate nparams constr (name, i) in
-    Vars.lift (i + 1) constr_pred
+    let () = Feedback.msg_info (Pp.str "Initial :: " ++ Printer.pr_econstr constr) in
+    let constr_know_pred = Vars.lift 1 constr in
+    let () = Feedback.msg_info (Pp.str "Know_pred :: " ++ Printer.pr_econstr constr_know_pred) in
+    let constr_ind = induction_generator sigma nparams constr_know_pred name n in
+    let () = Feedback.msg_info (Pp.str "Ind_gen :: " ++ Printer.pr_econstr constr_ind) in
+    let ind_constr = mkConstruct ((name, n), (i + 1)) in
+    let constr_constr = Vars.subst1 (applist (ind_constr, params_args)) constr_ind in
+    let () = Feedback.msg_info (Pp.str "-*- --- *** --- -*-") in
+    Vars.lift i constr_constr
   in
-  let predicate_map = List.map_i map 0 constr_types in
-  let pred_rev = List.rev predicate_map in
-  let predicates_ctx = List.map (fun i -> Rel.Declaration.LocalAssum (Anonymous, i)) pred_rev in
+  let pred_map = List.map_i map 0 constr_types in
+  let predicates_ctx = List.map (fun i -> Rel.Declaration.LocalAssum (Anonymous, i)) pred_map in
   
   let n_predicates = List.length predicates_ctx in
   let arity_ctx = Rel.map (fun i -> Vars.lift (n_predicates + 1) i) arity_ctx in
