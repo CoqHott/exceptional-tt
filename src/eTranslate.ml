@@ -1042,30 +1042,35 @@ let rec induction_generator sigma params_number constr_ty ind n_ind =
 match EConstr.kind sigma constr_ty with
 | App (t, args) -> 
    let _, arity = Array.chop params_number args in
-   let arity = Array.map (fun a -> Vars.lift 1 a) arity in
+   let arity = Array.map (fun a -> Vars.lift 2 a) arity in
    mkApp (mkRel 2, Array.append arity [| mkRel 1 |]) 
 | Ind (name, _) ->
    mkApp (mkRel 2, [| mkRel 1 |])
 | Prod (na, t, b) ->
    let end_in_ind = term_finish_in_ind_exact sigma t ind n_ind in
    let rest = induction_generator sigma params_number b ind n_ind in
-   let () = Feedback.msg_info (Pp.str "rest_gen: " ++ Printer.pr_econstr rest) in
+   let () = Feedback.msg_info (Pp.str "t_CURR   : " ++ Printer.pr_econstr t) in
+   let () = Feedback.msg_info (Pp.str "rest_gen : " ++ Printer.pr_econstr rest) in
    let body = 
      if end_in_ind then
        let ty = induction_generator sigma params_number t ind n_ind in
        let ty = Vars.liftn 1 2 ty in
-       let () = Feedback.msg_info (Pp.str "ty_PREV: " ++ Printer.pr_econstr b) in
-       let () = Feedback.msg_info (Pp.str "ty_gen: " ++ Printer.pr_econstr ty) in
-       let rest = Vars.liftn 3 2 rest in
-       let rest = Vars.subst1 (mkApp (mkRel 3, [| mkRel 2 |])) rest in
+       let () = Feedback.msg_info (Pp.str "ty_gen   : " ++ Printer.pr_econstr ty) in
+       let rest = Vars.liftn 4 4 rest in
+       let subst = [mkApp (mkRel 3, [| mkRel 2|]); mkRel 4; mkRel 2] in
+       let rest = Vars.substnl subst 0 rest in
        mkProd (Anonymous, ty, rest)
      else
-       let rest = Vars.liftn 2 2 rest in
-       Vars.subst1 (mkApp (mkRel 2, [| mkRel 1 |])) rest
+       let rest = Vars.liftn 3 4 rest in
+       let () = Feedback.msg_info (Pp.str "res_LIFT : " ++ Printer.pr_econstr rest) in
+       let subst = [(mkApp (mkRel 2, [| mkRel 1 |])); mkRel 3; mkRel 1] in
+       let rest = Vars.substnl subst 0 rest in 
+       let () = Feedback.msg_info (Pp.str "res_L_SUB: " ++ Printer.pr_econstr rest) in
+       rest
    in
-   let t = mkProd (na, t, body) in
+   let t = mkProd (na, Vars.lift 2 t, body) in
    let () = Feedback.msg_info (Pp.str "final_gen: " ++ Printer.pr_econstr t) in
-      let () = Feedback.msg_info (Pp.str " ***** ") in
+   let () = Feedback.msg_info (Pp.str " ***** ") in
    t
 | _ -> constr_ty
 
@@ -1098,12 +1103,11 @@ let parametric_induction err translator env name mind_d =
   let mind_user_lc = Array.to_list one_d.mind_user_lc in
   let mind_user_lc = List.map  EConstr.of_constr mind_user_lc in
   let constr_types = List.map decompose_map mind_user_lc in
-  let params_args = List.init nparams (fun n -> mkRel (n + 2)) in
+  let params_args = List.rev (List.init nparams (fun n -> mkRel (n + 2))) in
   let map i constr =
     let () = Feedback.msg_info (Pp.str "Initial :: " ++ Printer.pr_econstr constr) in
-    let constr_know_pred = Vars.lift 2 constr in
-    let () = Feedback.msg_info (Pp.str "Know_pred :: " ++ Printer.pr_econstr constr_know_pred) in
-    let constr_ind = induction_generator sigma nparams constr_know_pred name n in
+    let constr_ind = induction_generator sigma nparams constr name n in
+    let constr_ind = Vars.liftn 1 3 constr_ind in
     let () = Feedback.msg_info (Pp.str "Ind_gen :: " ++ Printer.pr_econstr constr_ind) in
     let ind_constr = mkConstruct ((name, n), (i + 1)) in
     let constr_constr = Vars.substl [(applist (ind_constr, params_args)); mkRel 1] constr_ind in
@@ -1117,7 +1121,8 @@ let parametric_induction err translator env name mind_d =
   let n_predicates = List.length predicates_ctx in
   let arity_ctx = Rel.map (fun i -> Vars.lift (n_predicates + 1) i) arity_ctx in
   
-  let param_inds = List.rev (List.init nparams (fun n -> mkRel (n_predicates + 1 + n + 1))) in 
+  let param_inds = List.init nparams (fun n -> mkRel (n_predicates + nindices + 1 + n + 1)) in
+  let param_inds = List.rev param_inds in
   let index_inds = List.rev (List.init nindices (fun n -> mkRel (n + 1))) in
   let ind_cons = applist (applist (ind, param_inds), index_inds) in
   
@@ -1125,7 +1130,7 @@ let parametric_induction err translator env name mind_d =
                         (Name (Id.of_string "P"), predicate)) real_param_ctx 
   in
   let ctxt = List.fold_left (fun acc d -> Rel.add d acc) ctxt predicates_ctx in
-  let ctxt = List.fold_left (fun acc d -> Rel.add d acc) ctxt arity_ctx in
+  let ctxt = List.fold_left (fun acc d -> Rel.add d acc) ctxt (List.rev arity_ctx) in
   let ctxt = Rel.add (Rel.Declaration.LocalAssum (Anonymous, ind_cons)) ctxt in
   
   let base_instance_name = translate_instance_name Declarations.(one_d.mind_typename) in
@@ -1134,7 +1139,13 @@ let parametric_induction err translator env name mind_d =
   let instance_t = mkConstU (instance_t, EInstance.make u) in
   let param_ind = mkApp (mkProj ((Projection.make param_cst false), instance_t), [| mkRel 1 |] ) in
   let ctxt = Rel.add (Rel.Declaration.LocalAssum (Anonymous, param_ind)) ctxt in
-  let tes = it_mkProd_or_LetIn (mkRel 0) ctxt in
   
-  let () = Feedback.msg_info (Printer.pr_econstr tes) in
+  let predicate = mkRel (nindices + 2 + n_predicates + 1) in
+  let predicate_args = List.init nindices (fun n -> mkRel (n + 3)) in
+  let predicate_args = List.rev (mkRel 2 :: predicate_args) in
+  let induction_pr = it_mkProd_or_LetIn (applist (predicate, predicate_args)) ctxt in
+  
+
+
+  let () = Feedback.msg_info (Printer.pr_econstr induction_pr) in
   ()
