@@ -294,6 +294,13 @@ let instantiate_parametric_modality err translator (name, n) ext =
     | _ -> None
   in
   let name_e = List.find_map find_map ext in 
+  let global_app name = match err with
+    | None -> ETranslate.GlobGen name
+    | Some exn -> ETranslate.GlobImp (Refmap.singleton exn name)
+  in
+  let translator = 
+    ETranslate.({ translator with inds = Mindmap.add name (global_app name_e) translator.inds }) 
+  in
   let mind' = EUtil.process_inductive mind in
   let mind_ = ETranslate.param_mutual_inductive err translator env (name, name_e) mind mind' in
 
@@ -309,10 +316,20 @@ let instantiate_parametric_modality err translator (name, n) ext =
   let () = List.iter iter mind_names in
 
   let ind_name_decl = (name, name_e, name_param) in
-  let map i one_d =
-    typeclass_declaration err translator ind_name_decl D.(one_d.mind_typename) (one_d, i)
+  let ty_decl = typeclass_declaration in 
+  let fold_map (i, translator) one_d =
+    let open ETranslate in 
+    let ext = ty_decl err translator ind_name_decl D.(one_d.mind_typename) (one_d, i) in
+    let refs = match ext with
+      | ExtConstant (cst, glob_ref) -> Cmap.add cst (global_app glob_ref) translator.refs
+      | _ -> translator.refs
+    in
+    let translator = { translator with refs } in
+    ((succ i, translator), ext)
   in
-  let instances = List.map_i map 0 (Array.to_list D.(mind.mind_packets)) in
+  let ((_, translator), instances) = 
+    List.fold_map fold_map (0, translator) (Array.to_list D.(mind.mind_packets)) 
+  in
   let env = Global.env () in
   let _ = ETranslate.parametric_induction err translator env name mind in
   instances  

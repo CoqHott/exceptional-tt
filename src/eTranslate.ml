@@ -825,9 +825,7 @@ let rec otranslate_param env param_env sigma (ind, ind_e) c = match EConstr.kind
    let mind_t = if gen then mkApp (mind_t, [|mkRel e|]) else mind_t in
    (sigma, mind_t)
 | Ind (ind, _) ->
-   let  () = Feedback.msg_info (Pp.str "-**") in
    let (sigma, c) = apply_global env sigma (IndRef ind) in
-   let  () = Feedback.msg_info (Printer.pr_econstr c) in
    (sigma, c)
 | Construct (c, _) ->
    let (sigma, c) = apply_global env sigma (ConstructRef c) in
@@ -915,12 +913,12 @@ let param_inductive err env sigma (block, block_e, n as total_ind) mind_d mind_e
   let arity = it_mkProd_or_LetIn (mkSort sort) (self :: arity_ctx') in
   let (sigma, _) = Typing.type_of env.env_tgt sigma arity in
 
-  let ext = match env.error with
+  (*let ext = match env.error with
   | None -> GlobGen block_e
   | Some exn -> GlobImp (Refmap.singleton exn block_e)
   in
   let translator = { env.translator with inds = Mindmap.add block ext env.translator.inds } in
-  let env = { env with translator } in
+  let env = { env with translator } in*)
   let (sigma, lc) = param_constr err env sigma gen total_ind mind_d mind_e one_d one_e in
   let lc = List.map (fun c -> EConstr.to_constr sigma c) lc in
   
@@ -977,7 +975,6 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let ty = applist (ind, args) in
   let body = mkApp (param_ind, [| ty |]) in
   let instance_ty = it_mkProd_or_LetIn body ctx in
-  let () = Feedback.msg_info (Printer.pr_econstr instance_ty) in
   let sigma,_ = Typing.type_of env sigma instance_ty in
 
   let (sigma, cenv) = make_context err translator env sigma in
@@ -985,7 +982,6 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   
   let arity_ctx = List.map EConstr.of_rel_decl one_d.mind_arity_ctxt in
   let (sigma, cenv, _) = otranslate_context cenv sigma arity_ctx in
-  let () = Feedback.msg_info (Pp.str "Post params") in
   let ctx = EConstr.rel_context cenv.env_tgt in
   let e = List.length ctx in 
   let param_constr = ((param_mod_e, 0), 1) in
@@ -1049,33 +1045,25 @@ match EConstr.kind sigma constr_ty with
 | Prod (na, t, b) ->
    let end_in_ind = term_finish_in_ind_exact sigma t ind n_ind in
    let rest = induction_generator sigma params_number b ind n_ind in
-   let () = Feedback.msg_info (Pp.str "t_CURR   : " ++ Printer.pr_econstr t) in
-   let () = Feedback.msg_info (Pp.str "rest_gen : " ++ Printer.pr_econstr rest) in
    let body = 
      if end_in_ind then
        let ty = induction_generator sigma params_number t ind n_ind in
        let ty = Vars.liftn 1 2 ty in
-       let () = Feedback.msg_info (Pp.str "ty_gen   : " ++ Printer.pr_econstr ty) in
        let rest = Vars.liftn 4 4 rest in
        let subst = [mkApp (mkRel 3, [| mkRel 2|]); mkRel 4; mkRel 2] in
        let rest = Vars.substnl subst 0 rest in
        mkProd (Anonymous, ty, rest)
      else
        let rest = Vars.liftn 3 4 rest in
-       let () = Feedback.msg_info (Pp.str "res_LIFT : " ++ Printer.pr_econstr rest) in
        let subst = [(mkApp (mkRel 2, [| mkRel 1 |])); mkRel 3; mkRel 1] in
        let rest = Vars.substnl subst 0 rest in 
-       let () = Feedback.msg_info (Pp.str "res_L_SUB: " ++ Printer.pr_econstr rest) in
        rest
    in
    let t = mkProd (na, Vars.lift 2 t, body) in
-   let () = Feedback.msg_info (Pp.str "final_gen: " ++ Printer.pr_econstr t) in
-   let () = Feedback.msg_info (Pp.str " ***** ") in
    t
 | _ -> constr_ty
 
 let parametric_induction err translator env name mind_d =
-  let () = Feedback.msg_info (Pp.str "parm ind") in
   let sigma = Evd.from_env env in
   let (sigma, env) = make_context err translator env sigma in
 
@@ -1112,7 +1100,6 @@ let parametric_induction err translator env name mind_d =
     let ind_constr = mkConstruct ((name, n), (i + 1)) in
     let constr_constr = Vars.substl [(applist (ind_constr, params_args)); mkRel 1] constr_ind in
     let () = Feedback.msg_info (Pp.str "Ind_final :: " ++ Printer.pr_econstr constr_constr) in
-    let () = Feedback.msg_info (Pp.str "-*- --- *** --- -*-") in
     Vars.lift i constr_constr
   in
   let pred_map = List.map_i map 0 constr_types in
@@ -1124,7 +1111,8 @@ let parametric_induction err translator env name mind_d =
   let param_inds = List.init nparams (fun n -> mkRel (n_predicates + nindices + 1 + n + 1)) in
   let param_inds = List.rev param_inds in
   let index_inds = List.rev (List.init nindices (fun n -> mkRel (n + 1))) in
-  let ind_cons = applist (applist (ind, param_inds), index_inds) in
+  let full_args_ind = param_inds @ index_inds in
+  let ind_cons = applist (ind, full_args_ind) in
   
   let ctxt = Rel.add (Rel.Declaration.LocalAssum 
                         (Name (Id.of_string "P"), predicate)) real_param_ctx 
@@ -1137,6 +1125,7 @@ let parametric_induction err translator env name mind_d =
   let instance_name = Constant.make1 (Lib.make_kn base_instance_name) in
   let (sigma, (instance_t, u)) = Evd.fresh_constant_instance env.env_src sigma instance_name in
   let instance_t = mkConstU (instance_t, EInstance.make u) in
+  let instance_t = applist (instance_t, List.map (Vars.lift 1) full_args_ind) in
   let param_ind = mkApp (mkProj ((Projection.make param_cst false), instance_t), [| mkRel 1 |] ) in
   let ctxt = Rel.add (Rel.Declaration.LocalAssum (Anonymous, param_ind)) ctxt in
   
@@ -1144,8 +1133,61 @@ let parametric_induction err translator env name mind_d =
   let predicate_args = List.init nindices (fun n -> mkRel (n + 3)) in
   let predicate_args = List.rev (mkRel 2 :: predicate_args) in
   let induction_pr = it_mkProd_or_LetIn (applist (predicate, predicate_args)) ctxt in
-  
-
-
   let () = Feedback.msg_info (Printer.pr_econstr induction_pr) in
+  
+  let sigma,induction_pr_tr = otranslate_type env sigma induction_pr in
+  let induction_pr_tr_ctx, _ = EConstr.decompose_prod_assum sigma induction_pr_tr in
+  let () = Feedback.msg_info (Printer.pr_econstr induction_pr_tr) in
+  
+  let () = Feedback.msg_info (Pp.str "***----***---***--***") in
+  let () = 
+    Feedback.msg_info 
+      (
+        Pp.prlist_with_sep 
+          (fun _ -> Pp.str "\n") 
+          Printer.pr_econstr 
+          (List.map Rel.Declaration.get_type ctxt)
+      )
+  in
+  let () = Feedback.msg_info (Pp.str "***----***---***--***") in
+
+  let n = 0 in 
+  let one_d = mind_d.mind_packets.(n) in
+  
+  let ind_param_induction = Nameops.add_suffix one_d.mind_typename "_param_ind" in
+  let sigma, (ind_param_induction, u) = 
+    let cst = (Constant.make1 (Lib.make_kn ind_param_induction)) in
+    let () = Feedback.msg_info (Constant.print cst) in
+    Evd.fresh_constant_instance env.env_src sigma cst
+  in
+
+  let cst = mkConstU (ind_param_induction, EInstance.make u) in
+  let _, ind_param_induction_ty = Typing.type_of env.env_src sigma cst in
+  let ind_param_induction_ty, _ = EConstr.decompose_prod_assum sigma ind_param_induction_ty in
+
+  let pred_ind_param_induction_ty = List.skipn (nindices + 2) ind_param_induction_ty in
+  let pred_ind_param_induction_ty = List.firstn n_predicates pred_ind_param_induction_ty in
+  
+  let predicate i decl =
+    let n_pred = Rel.Declaration.get_type decl in
+    let n_pred_ctx,_ = EConstr.decompose_prod_assum sigma n_pred in
+    let param_name = 
+      let name = Nameops.add_suffix one_d.mind_typename "_param" in
+      MutInd.make1 (Lib.make_kn name)
+    in
+    let fold_map (i, acc) = function
+      | Rel.Declaration.LocalAssum (_, t) when term_finish_in_ind_exact sigma t param_name n -> 
+         (succ i, acc)
+      | Rel.Declaration.LocalAssum _ -> (succ i, mkRel i :: acc)
+      | _ -> (succ i, mkRel i :: acc)
+    in
+    let _, applied_pred = List.fold_left fold_map (1,[]) n_pred_ctx in
+    let body = applist (mkRel ((List.length n_pred_ctx) + i), applied_pred) in
+    Vars.lift (nindices + 2 + n_predicates - i) (it_mkLambda_or_LetIn body n_pred_ctx)
+  in
+  let induction_predicates = List.map_i predicate 0 (List.rev pred_ind_param_induction_ty) in
+  let body = applist (mkRel 0, induction_predicates) in
+  let final = it_mkLambda_or_LetIn body induction_pr_tr_ctx in
+  let () = Feedback.msg_info (Printer.pr_econstr final) in
+
   ()
