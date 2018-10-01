@@ -1063,6 +1063,48 @@ match EConstr.kind sigma constr_ty with
    t
 | _ -> constr_ty
 
+let rec induction_predicate_gen sigma params_number constr_ty ind n_ind  = 
+match EConstr.kind sigma constr_ty with
+| Ind _ ->
+   mkRel 1
+| App (_, args) ->
+   let args = Array.map (fun i -> Vars.lift 1 i) args in
+   let _,args = Array.chop params_number args in
+   mkApp (mkRel 1, args)
+| Prod (na, t, b) ->
+   let bp = induction_predicate_gen sigma params_number b ind n_ind in
+   let bp = Vars.liftn 2 3 bp in
+   let subst = [mkRel 2; mkRel 1] in
+   let bp = Vars.substnl subst 0 bp in
+   mkProd (na, t, bp)
+| _ -> constr_ty
+
+let rec induction_predicate_generator sigma params_number constr_ty ind n_ind =
+match EConstr.kind sigma constr_ty with
+| (App _ | Ind _) ->
+   mkRel 1
+| Prod (na, t, b) -> 
+   let end_in_ind = term_finish_in_ind_exact sigma t ind n_ind in
+   let bp = induction_predicate_generator sigma params_number b ind n_ind in
+   let body =
+     if end_in_ind then
+       let tp = induction_predicate_gen sigma params_number t ind n_ind in
+       let () = Feedback.msg_info (Pp.str "tp: " ++ Printer.pr_econstr tp) in
+       let tp = Vars.liftn 2 3 tp in
+       let subst = [mkRel 2; mkRel 1] in
+       let tp = Vars.substnl subst 0 tp in
+       let () = Feedback.msg_info (Pp.str "tp_tr: " ++ Printer.pr_econstr tp) in
+       let bp = Vars.liftn 1 3 bp in 
+       let bp = Vars.subst1 (mkApp (mkRel 3, [| mkRel 1 |])) bp in
+       mkLambda (Anonymous, tp, bp)
+     else
+       let bp = Vars.liftn 1 3 bp in 
+       Vars.subst1 (mkApp (mkRel 2, [| mkRel 1 |])) bp
+   in
+   let () = Feedback.msg_info (Pp.str "body: " ++ Printer.pr_econstr body) in
+   mkLambda (na, Vars.lift 1 t, body)
+| _ -> constr_ty
+
 let parametric_induction err translator env name mind_d =
   let sigma = Evd.from_env env in
   let (sigma, env) = make_context err translator env sigma in
@@ -1133,27 +1175,42 @@ let parametric_induction err translator env name mind_d =
   let predicate_args = List.init nindices (fun n -> mkRel (n + 3)) in
   let predicate_args = List.rev (mkRel 2 :: predicate_args) in
   let induction_pr = it_mkProd_or_LetIn (applist (predicate, predicate_args)) ctxt in
-  let () = Feedback.msg_info (Printer.pr_econstr induction_pr) in
+  let () = Feedback.msg_info (Pp.str "Predicate_type \n:" ++ Printer.pr_econstr induction_pr) in
   
   let sigma,induction_pr_tr = otranslate_type env sigma induction_pr in
   let induction_pr_tr_ctx, _ = EConstr.decompose_prod_assum sigma induction_pr_tr in
-  let () = Feedback.msg_info (Printer.pr_econstr induction_pr_tr) in
-  
-  let () = Feedback.msg_info (Pp.str "***----***---***--***") in
-  let () = 
-    Feedback.msg_info 
-      (
-        Pp.prlist_with_sep 
-          (fun _ -> Pp.str "\n") 
-          Printer.pr_econstr 
-          (List.map Rel.Declaration.get_type ctxt)
-      )
+  let () = Feedback.msg_info (Pp.str "Predicate_trans_type\n" ++ 
+                                Printer.pr_econstr induction_pr_tr) 
   in
-  let () = Feedback.msg_info (Pp.str "***----***---***--***") in
+  
+  let () = Feedback.msg_info (Pp.str "-----------------------------") in
+
+  let (_,_,l) = MutInd.repr3 name in
+  let name_param = Nameops.add_suffix (Label.to_id l) "_param" in
+  let name_param = MutInd.make1 (Lib.make_kn name_param) in
+  
+  let () = Feedback.msg_info (Pp.str "Name param: " ++ MutInd.print name_param) in
 
   let n = 0 in 
-  let one_d = mind_d.mind_packets.(n) in
+  let mind_d_param,_ = Inductive.lookup_mind_specif env.env_src (name_param, 0) in
+  let one_d_param = mind_d_param.mind_packets.(n) in
+  let mind_param = List.init mind_d.mind_ntypes (fun n -> n) in 
+  let fold_map sigma n =
+    let (sigma, (ind, u)) = Evd.fresh_inductive_instance env.env_src sigma (name_param, n) in
+    (sigma, mkIndU (ind, EInstance.make u))
+  in
+  let sigma, ind_subst = List.fold_map fold_map sigma mind_param in
   
+  let m = 0 in 
+  let constr_ty = one_d_param.mind_user_lc.(m) in
+  let constr_ty = EConstr.of_constr constr_ty in
+  let constr_ty = Vars.substnl ind_subst 0 constr_ty in 
+  let _,constr_ty = EConstr.decompose_prod_n_assum sigma (nparams + 1) constr_ty in 
+  let ind_pred_gen = induction_predicate_generator in
+  let generator_predicates = ind_pred_gen sigma (nparams + 1) constr_ty name_param m in
+  let () = Feedback.msg_info (Pp.str "Trans --> " ++ Printer.pr_econstr generator_predicates) in
+  
+  (*
   let ind_param_induction = Nameops.add_suffix one_d.mind_typename "_param_ind" in
   let sigma, (ind_param_induction, u) = 
     let cst = (Constant.make1 (Lib.make_kn ind_param_induction)) in
@@ -1189,5 +1246,5 @@ let parametric_induction err translator env name mind_d =
   let body = applist (mkRel 0, induction_predicates) in
   let final = it_mkLambda_or_LetIn body induction_pr_tr_ctx in
   let () = Feedback.msg_info (Printer.pr_econstr final) in
-
+  *)
   ()

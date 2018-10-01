@@ -331,6 +331,7 @@ let instantiate_parametric_modality err translator (name, n) ext =
     List.fold_map fold_map (0, translator) (Array.to_list D.(mind.mind_packets)) 
   in
   let env = Global.env () in
+  let () = Feedback.msg_info (Pp.str "param induction") in
   let _ = ETranslate.parametric_induction err translator env name mind in
   instances  
 
