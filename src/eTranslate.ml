@@ -1063,36 +1063,39 @@ match EConstr.kind sigma constr_ty with
    t
 | _ -> constr_ty
 
-let rec induction_predicate_gen sigma params_number constr_ty ind n_ind  = 
+let dummy_param mind =
+  let _,_,l = MutInd.repr3 mind in
+  Lib.make_kn  (Nameops.add_suffix (Label.to_id l) "_dummy_param")
+
+let rec induction_predicate_gen sigma params_number constr_ty ind n_ind dummy = 
 match EConstr.kind sigma constr_ty with
 | Ind _ ->
-   mkRel 1
+    dummy
 | App (_, args) ->
    let args = Array.map (fun i -> Vars.lift 1 i) args in
    let _,args = Array.chop params_number args in
-   mkApp (mkRel 1, args)
+   mkApp (dummy, args)
 | Prod (na, t, b) ->
-   let bp = induction_predicate_gen sigma params_number b ind n_ind in
+   let bp = induction_predicate_gen sigma params_number b ind n_ind dummy in
    let bp = Vars.liftn 2 3 bp in
    let subst = [mkRel 2; mkRel 1] in
    let bp = Vars.substnl subst 0 bp in
    mkProd (na, t, bp)
 | _ -> constr_ty
 
-let rec induction_predicate_generator sigma params_number constr_ty ind n_ind =
+let rec induction_predicate_generator sigma params_number constr_ty ind n_ind dummy =
 match EConstr.kind sigma constr_ty with
 | (App _ | Ind _) ->
    mkRel 1
 | Prod (na, t, b) -> 
    let end_in_ind = term_finish_in_ind_exact sigma t ind n_ind in
-   let bp = induction_predicate_generator sigma params_number b ind n_ind in
+   let bp = induction_predicate_generator sigma params_number b ind n_ind dummy in
    let body =
      if end_in_ind then
-       let tp = induction_predicate_gen sigma params_number t ind n_ind in
+       let tp = induction_predicate_gen sigma params_number t ind n_ind dummy in
        let () = Feedback.msg_info (Pp.str "tp: " ++ Printer.pr_econstr tp) in
-       let tp = Vars.liftn 2 3 tp in
-       let subst = [mkRel 2; mkRel 1] in
-       let tp = Vars.substnl subst 0 tp in
+       let tp = Vars.liftn 2 2 tp in
+       let tp = Vars.subst1 (mkRel 2) tp in
        let () = Feedback.msg_info (Pp.str "tp_tr: " ++ Printer.pr_econstr tp) in
        let bp = Vars.liftn 1 3 bp in 
        let bp = Vars.subst1 (mkApp (mkRel 3, [| mkRel 1 |])) bp in
@@ -1101,15 +1104,23 @@ match EConstr.kind sigma constr_ty with
        let bp = Vars.liftn 1 3 bp in 
        Vars.subst1 (mkApp (mkRel 2, [| mkRel 1 |])) bp
    in
-   let () = Feedback.msg_info (Pp.str "body: " ++ Printer.pr_econstr body) in
-   mkLambda (na, Vars.lift 1 t, body)
+   let t = mkLambda (na, Vars.lift 1 t, body) in
+   let () = Feedback.msg_info (Pp.str "parcial: " ++ Printer.pr_econstr t) in
+   t
 | _ -> constr_ty
 
-let parametric_induction err translator env name mind_d =
-  let sigma = Evd.from_env env in
-  let (sigma, env) = make_context err translator env sigma in
+let recover_param sigma name predicate term =
+  let rec map_binder n term =
+    match EConstr.kind sigma term with
+    | Ind ((m,_), _) when MutInd.equal name m -> mkRel n
+    | App (t, args) when (EConstr.isInd sigma t) && MutInd.equal name (fst (fst (EConstr.destInd sigma t))) ->
+       mkApp (mkRel n, args)
+    | _ -> map_with_binders sigma succ map_binder n term
+  in
+  map_binder predicate term
 
-  let n = 0 in
+
+let source_induction sigma env name mind_d n  =
   let one_d = mind_d.mind_packets.(n) in 
 
   let nindices = List.length one_d.mind_arity_ctxt - List.length mind_d.mind_params_ctxt in 
@@ -1135,13 +1146,10 @@ let parametric_induction err translator env name mind_d =
   let constr_types = List.map decompose_map mind_user_lc in
   let params_args = List.rev (List.init nparams (fun n -> mkRel (n + 2))) in
   let map i constr =
-    let () = Feedback.msg_info (Pp.str "Initial :: " ++ Printer.pr_econstr constr) in
     let constr_ind = induction_generator sigma nparams constr name n in
     let constr_ind = Vars.liftn 1 3 constr_ind in
-    let () = Feedback.msg_info (Pp.str "Ind_gen :: " ++ Printer.pr_econstr constr_ind) in
     let ind_constr = mkConstruct ((name, n), (i + 1)) in
     let constr_constr = Vars.substl [(applist (ind_constr, params_args)); mkRel 1] constr_ind in
-    let () = Feedback.msg_info (Pp.str "Ind_final :: " ++ Printer.pr_econstr constr_constr) in
     Vars.lift i constr_constr
   in
   let pred_map = List.map_i map 0 constr_types in
@@ -1176,6 +1184,14 @@ let parametric_induction err translator env name mind_d =
   let predicate_args = List.rev (mkRel 2 :: predicate_args) in
   let induction_pr = it_mkProd_or_LetIn (applist (predicate, predicate_args)) ctxt in
   let () = Feedback.msg_info (Pp.str "Predicate_type \n:" ++ Printer.pr_econstr induction_pr) in
+  induction_pr
+
+let parametric_induction err translator env name mind_d =
+  let sigma = Evd.from_env env in
+  let (sigma, env) = make_context err translator env sigma in
+  
+  let n = 0 in
+  let induction_pr = source_induction sigma env name mind_d n in
   
   let sigma,induction_pr_tr = otranslate_type env sigma induction_pr in
   let induction_pr_tr_ctx, _ = EConstr.decompose_prod_assum sigma induction_pr_tr in
@@ -1201,24 +1217,30 @@ let parametric_induction err translator env name mind_d =
   in
   let sigma, ind_subst = List.fold_map fold_map sigma mind_param in
   
-  let m = 0 in 
-  let constr_ty = one_d_param.mind_user_lc.(m) in
-  let constr_ty = EConstr.of_constr constr_ty in
-  let constr_ty = Vars.substnl ind_subst 0 constr_ty in 
-  let _,constr_ty = EConstr.decompose_prod_n_assum sigma (nparams + 1) constr_ty in 
-  let ind_pred_gen = induction_predicate_generator in
-  let generator_predicates = ind_pred_gen sigma (nparams + 1) constr_ty name_param m in
-  let () = Feedback.msg_info (Pp.str "Trans --> " ++ Printer.pr_econstr generator_predicates) in
-  
-  (*
   let ind_param_induction = Nameops.add_suffix one_d.mind_typename "_param_ind" in
   let sigma, (ind_param_induction, u) = 
     let cst = (Constant.make1 (Lib.make_kn ind_param_induction)) in
     let () = Feedback.msg_info (Constant.print cst) in
     Evd.fresh_constant_instance env.env_src sigma cst
   in
-
+  
   let cst = mkConstU (ind_param_induction, EInstance.make u) in
+
+  let m = 0 in 
+  let constr_ty = one_d_param.mind_user_lc.(m) in
+  let constr_ty = EConstr.of_constr constr_ty in
+  let constr_ty = Vars.substnl ind_subst 0 constr_ty in 
+  let _,constr_ty = EConstr.decompose_prod_n_assum sigma (nparams + 1) constr_ty in 
+  let ind_pred_gen = induction_predicate_generator in
+  let dummy_param_name = MutInd.make1 (dummy_param name) in
+  let dummy_term  = mkInd (dummy_param_name, 0) in
+  let generator_predicates = ind_pred_gen sigma (nparams + 1) constr_ty name_param m dummy_term in
+  let generator_predicates = recover_param sigma dummy_param_name 1 generator_predicates in
+  let () = Feedback.msg_info (Pp.str "PreTrans --> " ++ Printer.pr_econstr constr_ty) in
+  let () = Feedback.msg_info (Pp.str "Trans --> " ++ Printer.pr_econstr generator_predicates) in
+  
+
+  (*
   let _, ind_param_induction_ty = Typing.type_of env.env_src sigma cst in
   let ind_param_induction_ty, _ = EConstr.decompose_prod_assum sigma ind_param_induction_ty in
 
