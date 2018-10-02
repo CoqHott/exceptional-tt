@@ -1014,6 +1014,7 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
 
   (sigma, instance_ty, param_instance)
 
+(*
 let catch_inductive err translator env name mind_d =
   let sigma = Evd.from_env env in 
   let (sigma, env) = make_context err translator env sigma in
@@ -1033,7 +1034,8 @@ let catch_inductive err translator env name mind_d =
     ()
   in
   ()
-
+ *)
+  
 let rec induction_generator sigma params_number constr_ty ind n_ind = 
 match EConstr.kind sigma constr_ty with
 | App (t, args) -> 
@@ -1105,8 +1107,6 @@ match EConstr.kind sigma constr_ty with
        Vars.substnl subst 0 bp
    in
    let t = mkLambda (na, Vars.lift 2 t, body) in
-   let () = Feedback.msg_info (Pp.str "parcial: " ++ Printer.pr_econstr t) in
-   let () = Feedback.msg_info (Pp.str "**********************************************************") in
    t
 | _ -> constr_ty
 
@@ -1203,8 +1203,6 @@ let parametric_induction err translator env name mind_d =
   let (_,_,l) = MutInd.repr3 name in
   let name_param = Nameops.add_suffix (Label.to_id l) "_param" in
   let name_param = MutInd.make1 (Lib.make_kn name_param) in
-  
-  let () = Feedback.msg_info (Pp.str "Name param: " ++ MutInd.print name_param) in
 
   let mind_d_param,_ = Inductive.lookup_mind_specif env.env_src (name_param, 0) in
   let one_d_param = mind_d_param.mind_packets.(n) in
@@ -1218,7 +1216,6 @@ let parametric_induction err translator env name mind_d =
   let ind_param_induction = Nameops.add_suffix one_d.mind_typename "_param_ind" in
   let sigma, (ind_param_induction, u) = 
     let cst = (Constant.make1 (Lib.make_kn ind_param_induction)) in
-    let () = Feedback.msg_info (Constant.print cst) in
     Evd.fresh_constant_instance env.env_src sigma cst
   in
   let cst = mkConstU (ind_param_induction, EInstance.make u) in
@@ -1255,7 +1252,6 @@ let parametric_induction err translator env name mind_d =
     let body_predicate = applist (mkRel predicate_rel, List.map (Vars.lift 1) pind_arity) in
     it_mkLambda_or_LetIn body_predicate predicate_ctx
   in
-  let _ = Feedback.msg_info (Pp.str "cst_pred " ++ Printer.pr_econstr cst_predicate) in
   let cst_predicate = Vars.lift (params_offset - 1) cst_predicate in
   let cst_params = Array.init (nparams + 1) (fun n -> mkRel (n + 1 + params_offset)) in
   let cst_arity = Array.init (nindices + 2) (fun n -> mkRel (n + 1)) in
@@ -1266,4 +1262,5 @@ let parametric_induction err translator env name mind_d =
   let trans_pred = it_mkLambda_or_LetIn app_cst induction_pr_tr_ctx in
   let e = get_exception env in
   let trans_pred = mkLambda_or_LetIn e trans_pred in
+  let sigma,_ = Typing.type_of env.env_src sigma trans_pred in
   (sigma, induction_pr, trans_pred)

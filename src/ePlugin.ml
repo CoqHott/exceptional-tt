@@ -338,16 +338,14 @@ let instantiate_parametric_modality err translator (name, n) ext =
   let name = Declarations.(mind.mind_packets.(0).mind_typename) in
   let induction_name = Nameops.add_suffix name "_ind_param" in
   let uctx = UState.context (Evd.evar_universe_context sigma) in
-  let _ = declare_axiom induction_name uctx (EConstr.to_constr sigma ind) in
+  let cst_ind = declare_axiom induction_name uctx (EConstr.to_constr sigma ind) in
   
-  let _ = Feedback.msg_info (Printer.pr_econstr ind_e) in
   let induction_name_e = Nameops.add_suffix induction_name "ᵉ" in
   let uctx = UState.context (Evd.evar_universe_context sigma) in
-  let _ = declare_constant_wo_ty induction_name_e uctx (EConstr.to_constr sigma ind_e) in
-
+  let cst_ind_e = declare_constant_wo_ty induction_name_e uctx (EConstr.to_constr sigma ind_e) in
   (* ********************* *)
 
-  instances  
+  ExtConstant (cst_ind, ConstRef cst_ind_e) :: instances  
 
 let try_instantiate_parametric_modality err translator (name, n) ext  =
   let module D = Declarations in 
