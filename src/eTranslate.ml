@@ -53,18 +53,6 @@ let push_def na (c, ce) (t, te) env = { env with
   env_tgt = EConstr.push_rel (LocalDef (na, ce, te)) env.env_tgt;
 }
 
-type pcontext = {
-  perror : global_reference option;
-  (** Whether the translation is relativized to a specific error type *)
-  ptranslator : translator;
-  penv_src : Environ.env;
-  (** ⊢ Γ *)
-  penv_tgt : Environ.env;
-  (** ⊢ ⟦Γ⟧ *)
-  penv_ptgt : Environ.env;
-  (** ⊢ ⟦Γ⟧ε *)
-}
-
 let translate_name id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᵉ")
@@ -77,10 +65,6 @@ let translate_failure id =
   let id = Id.to_string id in
   Id.of_string (id ^ "ᴱ")
 
-let ptranslate_name id =
-  let id = Id.to_string id in
-  Id.of_string (id ^ "ᴿ")
-
 let translate_param_name id = 
   let id = Id.to_string id in
   Id.of_string (id ^ "_param")
@@ -88,31 +72,6 @@ let translate_param_name id =
 let translate_instance_name id = 
   let id = Id.to_string id in
   Id.of_string (id ^ "_instance")
-  
-let ptranslate_internal_name = ptranslate_name
-
-let pname = function
-| Anonymous -> Anonymous
-| Name id -> Name (ptranslate_name id)
-
-let plift env t =
-  let n = Environ.nb_rel env.penv_tgt - 1 in
-  let subst = List.init n (fun i -> mkRel (2 * i + 2)) in
-  Vars.substl subst (Vars.liftn (2 * n) (n + 1) t)
-
-(* (Γ, x : A | ⟦Γ⟧, x : ⟦A⟧ | ⟦Γ⟧ε, x : ⟦A⟧, xε : ⟦A⟧ε x). *)
-let push_passum na (t, te, tr) env =
-  { env with
-    penv_src = EConstr.push_rel (LocalAssum (na, t)) env.penv_src;
-    penv_tgt = EConstr.push_rel (LocalAssum (na, te)) env.penv_tgt;
-    penv_ptgt = EConstr.push_rel (LocalAssum (pname na, tr)) (EConstr.push_rel (LocalAssum (na, plift env te)) env.penv_ptgt);
-  }
-
-let push_pdef na (c, ce, cr) (t, te, tr) env = { env with
-  penv_src = EConstr.push_rel (LocalDef (na, c, t)) env.penv_src;
-  penv_tgt = EConstr.push_rel (LocalDef (na, ce, te)) env.penv_tgt;
-  penv_ptgt = EConstr.push_rel (LocalDef (pname na, Vars.lift 1 cr, tr)) (EConstr.push_rel (LocalDef (na, plift env ce, plift env te)) env.penv_ptgt);
-}
 
 let lift_rel_context n ctx =
   let fold k d accu =
@@ -141,8 +100,6 @@ let param_mod_e = MutInd.make1 (make_kn "ParamModᵉ")
 
 let param_cst = Constant.make1 (make_kn "param")
 let param_cst_e = Constant.make1 (make_kn "paramᵉ")
-let param_def = ConstRef param_cst
-let param_def_e = ConstRef param_cst_e
 
 let tm_exception = Constant.make1 (make_kn "Exception")
 let tm_exception_e = Constant.make1 (make_kn "Exceptionᵉ")
@@ -181,10 +138,6 @@ let get_ind env (ind, n) =
     let gen, ind = get_instance env.error (Mindmap.find ind env.translator.inds) in
     gen, (ind, n)
   with Not_found -> raise (MissingGlobal (env.error, IndRef (ind, n)))
-
-let get_pcst env cst =
-  try get_instance env.perror (Cmap.find cst env.ptranslator.prefs)
-  with Not_found -> raise (MissingGlobal (env.perror, ConstRef cst))
 
 let apply_global env sigma gr =
   let gen, gr = match gr with
@@ -533,16 +486,6 @@ and otranslate_context env sigma = function
   let (sigma, be) = otranslate env sigma b in
   (sigma, push_def na (b, be) (t, te) env, LocalDef (na, be, te) :: ctx)
 
-let project env = {
-  error = env.perror;
-  translator = env.ptranslator;
-  env_src = env.penv_src;
-  env_tgt = env.penv_tgt;
-}
-
-let top_decls env =
-  List.firstn 2 (EConstr.rel_context env.penv_ptgt)
-
 let make_error err env sigma = match err with
 | None ->
   let (sigma, s) = Evd.fresh_sort_in_family ~rigid:Evd.UnivRigid env sigma InType in
@@ -770,7 +713,7 @@ let rec term_finish_in_ind sigma t ind_name = match EConstr.kind sigma t with
 let rec term_finish_in_ind_exact sigma t ind_name n = match EConstr.kind sigma t with
   | App (t, _) -> isInd sigma t && MutInd.equal (fst (fst (destInd sigma t))) ind_name
   | Ind (ind,_) -> MutInd.equal (fst ind) ind_name && snd ind == n
-  | Prod (_, _, body) -> term_finish_in_ind sigma body ind_name
+  | Prod (_, _, body) -> term_finish_in_ind_exact sigma body ind_name n
   | _ -> false
 
 let param_env_accum_up_to param_env n =
@@ -1082,7 +1025,7 @@ match EConstr.kind sigma constr_ty with
    let bp = Vars.liftn 2 3 bp in
    let subst = [mkRel 2; mkRel 1] in
    let bp = Vars.substnl subst 0 bp in
-   mkProd (na, t, bp)
+   mkProd (na, Vars.lift 1 t, bp)
 | _ -> constr_ty
 
 let rec induction_predicate_generator sigma params_number constr_ty ind n_ind dummy =
@@ -1262,5 +1205,7 @@ let parametric_induction err translator env name mind_d =
   let trans_pred = it_mkLambda_or_LetIn app_cst induction_pr_tr_ctx in
   let e = get_exception env in
   let trans_pred = mkLambda_or_LetIn e trans_pred in
+  let _ = Feedback.msg_info(Printer.pr_econstr induction_pr) in
+  let _ = Feedback.msg_info(Printer.pr_econstr trans_pred) in
   let sigma,_ = Typing.type_of env.env_src sigma trans_pred in
-  (sigma, induction_pr, trans_pred)
+  (sigma, induction_pr, trans_pred, mkProd_or_LetIn e induction_pr_tr)
