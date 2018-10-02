@@ -175,6 +175,13 @@ let solve_evars env sigma c =
   let c = Typing.e_solve_evars env evdref c in
   (!evdref, c)
 
+let declare_axiom id uctx ty =
+  let pe = (None, false, (ty, uctx), None) in
+  let pd = Entries.ParameterEntry pe in  
+  let decl = (pd, IsAssumption Definitional) in
+  let cst_ = Declare.declare_constant id decl in
+  cst_
+
 let declare_constant id uctx c t =
   let ce = Declare.definition_entry ~types:t ~univs:uctx c in
   let cd = Entries.DefinitionEntry ce in
@@ -265,16 +272,10 @@ let typeclass_declaration err translator ind_names_decl ind_name param_ind =
   
   let (sigma, base_instance_ty, pinstance) = func err translator env ind_names_decl param_ind in
   
-  let base_id = (Id.to_string ind_name) ^ "_instance" in
-  let id = Id.of_string base_id in
-  let uctx = UState.context (Evd.evar_universe_context sigma) in
-  
   (* Polymorphic Axiom declaration *)
-  let pe = (None, false, (EConstr.to_constr sigma base_instance_ty, uctx), None) in
-  let pd = Entries.ParameterEntry pe in
-  
-  let decl = (pd, IsAssumption Definitional) in
-  let instance_name = Declare.declare_constant id decl in
+  let id = Nameops.add_suffix ind_name  "_instance" in
+  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  let instance_name = declare_axiom id uctx (EConstr.to_constr sigma base_instance_ty) in
   let _,dirPath,label = Constant.repr3 instance_name in
   let qualid = Libnames.make_qualid dirPath (Label.to_id label) in
   let () = Classes.existing_instance true (Libnames.Qualid (None, qualid)) None in
@@ -331,8 +332,21 @@ let instantiate_parametric_modality err translator (name, n) ext =
     List.fold_map fold_map (0, translator) (Array.to_list D.(mind.mind_packets)) 
   in
   let env = Global.env () in
-  let () = Feedback.msg_info (Pp.str "param induction") in
-  let _ = ETranslate.parametric_induction err translator env name mind in
+  let (sigma, ind, ind_e) = ETranslate.parametric_induction err translator env name mind in
+  
+  (* Parametrict induction *)
+  let name = Declarations.(mind.mind_packets.(0).mind_typename) in
+  let induction_name = Nameops.add_suffix name "_ind_param" in
+  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  let _ = declare_axiom induction_name uctx (EConstr.to_constr sigma ind) in
+  
+  let _ = Feedback.msg_info (Printer.pr_econstr ind_e) in
+  let induction_name_e = Nameops.add_suffix induction_name "ᵉ" in
+  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  let _ = declare_constant_wo_ty induction_name_e uctx (EConstr.to_constr sigma ind_e) in
+
+  (* ********************* *)
+
   instances  
 
 let try_instantiate_parametric_modality err translator (name, n) ext  =

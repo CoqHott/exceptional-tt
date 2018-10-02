@@ -55,4 +55,5 @@ val param_instance_inductive :
     Declarations.one_inductive_body * int -> Evd.evar_map * EConstr.t * EConstr.t
 
 val parametric_induction :
-  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body -> unit
+  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body -> 
+    Evd.evar_map * EConstr.t * EConstr.t
