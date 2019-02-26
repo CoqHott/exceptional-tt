@@ -1,9 +1,21 @@
 Require Import Weakly.Effects.
 
-Effect Definition e: Exception. Admitted.
+Effect Definition e: Exception. Admitted. 
 
+Inductive nat' (E: Type): Type :=
+| O': nat' E
+| S': nat' E -> nat' E
+| nat_exc: E -> nat' E.
+
+Inductive nat_param' (E: Type): nat' E -> Prop :=
+| O'_param: nat_param' E (O' E)
+| S'_param: forall n, nat_param' E n -> nat_param' E (S' E n). 
+          
 Effect List Translate nat bool list.
 Effect List Translate False le lt gt eq not and or.
+
+Definition g: forall e, nat := fun e => raise nat e.
+Effect Translate g. Print gᵉ.
 
 Scheme eqᵒ_rect := Induction for eqᵒ Sort Type.
 Scheme eqᵒ_ind := Induction for eqᵒ Sort Prop.
@@ -99,6 +111,9 @@ Proof.
   - exact (Falseᵒ E).
 Defined. Print list_param_deepᵉ.
 
+Effect Definition param_correctness: forall (A: Type) (H: ParamMod A) e, param (raise A e) -> False.
+
+
 Effect Definition head_empty_list_no_error: forall A {H: ParamMod A } (l: list A),
     length l > 0 -> list_param_deep A H l -> head l <> raise _ e.
 Proof.
@@ -107,5 +122,16 @@ Proof.
   - inversion Hlength.
   - inversion list_deep_param.
     inversion Hhead. simpl in *. subst. 
-Abort.
-    
+Abort.   
+
+Inductive vec (A: Type) : nat -> Type :=
+| vnil: vec A 0
+| vcons: forall n, A -> vec A n -> vec A (S n).
+
+Effect Translate vec.
+
+Effect Definition raise_correctnes: forall A n, param (raise (vec A n) e) -> False.
+Proof.
+  simpl. intros E A n Hn.
+  inversion Hn.
+  Show Proof.

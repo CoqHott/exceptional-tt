@@ -724,6 +724,7 @@ let rec otranslate_param env param_env sigma (ind, ind_e) c = match EConstr.kind
    let m = param_env_accum_up_to param_env n  in
    (sigma, mkRel m) 
 | Sort _ | Prod _ ->
+
    let (sigma, c_) = otranslate_param env param_env sigma (ind, ind_e) c in
    let c_ = param_lift param_env c_ in
    let (sigma, w) = otranslate_param_type env param_env sigma (ind, ind_e) c in
@@ -1205,7 +1206,5 @@ let parametric_induction err translator env name mind_d =
   let trans_pred = it_mkLambda_or_LetIn app_cst induction_pr_tr_ctx in
   let e = get_exception env in
   let trans_pred = mkLambda_or_LetIn e trans_pred in
-  let _ = Feedback.msg_info(Printer.pr_econstr induction_pr) in
-  let _ = Feedback.msg_info(Printer.pr_econstr trans_pred) in
   let sigma,_ = Typing.type_of env.env_src sigma trans_pred in
   (sigma, induction_pr, trans_pred, mkProd_or_LetIn e induction_pr_tr)
