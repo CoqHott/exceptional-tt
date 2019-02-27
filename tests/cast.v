@@ -1,18 +1,6 @@
 Require Import Weakly.Effects.
 
-Effect Definition Exception : Type.
-Proof.
-  exact (fun E : Type => TypeVal E E (@id E)).
-Defined. 
-
-Effect Definition raise : forall A, Exception -> A.
-Proof.
-  exact (fun (E:Type) (A : type E) => Err A).
-Defined. 
-
-Arguments raise [A] _.
-
-(* Define specific eliminations: parametric for Prop, default raise for Type *)
+Effect Definition e: Exception. Admitted.
 
 Inductive sum (A B : Prop) : Type :=  inl : A -> sum A B | inr : B -> sum A B.
 
@@ -21,9 +9,13 @@ Arguments inl {_ _} _.
 Arguments inr {_ _} _.
 
 Effect List Translate sum sum_rect sum_rec. 
-Effect List Translate False False_ind False_rect not.
+Effect List Translate True True_ind True_rect False False_ind False_rect not.
 Effect List Translate eq eq_ind eq_rect eq_rec.
 Effect List Translate nat nat_rect nat_rec. 
+Effect List Translate list list_rect.
+Effect List Translate length eq_sym eq_trans f_equal.
+Effect List Translate sig sig_rect sig_rec.
+Effect List Translate prod prod_rect.
 
 (* basic inversion lemmas for nat *)
 
@@ -39,11 +31,13 @@ Defined.
 (* Decidable type class *)
 
 Class Decidable (A : Prop) : Type := dec : A + (not A).
+Effect Translate Decidable.
+Effect Translate dec.
   
 Arguments dec A {_}.
 
-Class EqDecidable (A : Type) :=
-  { eq_dec : forall a b : A, Decidable (a = b) }.
+Class EqDecidable (A : Type) := { eq_dec : forall a b : A, Decidable (a = b) }.
+Effect Translate EqDecidable.
 
 Instance Decidable_eq_nat : forall (x y : nat), Decidable (x = y).
 induction x.
@@ -55,25 +49,20 @@ induction x.
   + induction (IHx y). left. f_equal; auto. 
     right. intro e. apply inj_S in e. apply (b e).
 Defined.
+Effect List Translate Decidable_eq_nat.
 
 Instance EqDecidable_nat : EqDecidable nat := 
   { eq_dec := Decidable_eq_nat }.
 
-Effect List Translate list prod Decidable dec length True
-       eq_sym eq_trans f_equal Decidable_eq_nat.
+Effect List Translate EqDecidable_nat.
 
 Notation " ( x ; p ) " := (exist _ x p).
-
-Effect List Translate sig sig_rect sig_rec list_rect.
-
-Effect Definition cast_fail : Exception.
-Admitted. 
 
 Definition cast (A:Type) (P : A -> Prop)
            (a:A) {Hdec : Decidable (P a)} : {a : A | P a}.
   induction (dec (P a)) using sum_rect. 
   - exact (a ; a0).
-  - exact (raise cast_fail).
+  - exact (raise _ e).
 Defined. 
 
 Effect Translate cast.
@@ -86,14 +75,12 @@ Proof.
     + apply inj_S in p. induction (S_not0 _ p) using False_rect.
     + exact (a , a0).
 Defined.
-
 Effect Translate list2_to_pair.
 
 Definition list_to_pair {A} : list A -> A * A.
 Proof.
   exact (fun l => list2_to_pair (cast (list A) (fun l => length l = 2) l)).  
 Defined.
-
 Effect Translate list_to_pair.
 
 Notation "[ ]" := nil (format "[ ]") : list_scope.
@@ -101,7 +88,7 @@ Notation "[ x ]" := (cons x nil) : list_scope.
 Notation "[ x ; y ; .. ; z ]" := (cons x (cons y .. (cons z nil) ..)) : list_scope.
 Notation "[ x ; .. ; y ]" := (cons x .. (cons y nil) ..) (compat "8.4") : list_scope.
 
-Definition list_to_pair_prop A (x : A) e : list_to_pair [x ; raise e] = (x, raise e).
+Definition list_to_pair_prop A (x : A) e : list_to_pair [x ; raise _ e] = (x, raise _ e).
 Proof.
   reflexivity.
 Defined.
@@ -115,14 +102,16 @@ Definition list_to_pair_prop_soundness E A x y :
 
 (* those two examples should be forbidden, because of non cummulativity *)
 
-Definition list_to_pair_prop_fake : forall A (x y : A) e,
-    list_to_pair (raise e) = (x,y).
+Effect Definition list_to_pair_prop_fake : forall A (x y : A) e,
+    list_to_pair (raise _ e) = (x,y) -> False.
+Proof.
+  intros E A x y e H.
+  inversion H.
+Defined.  
 
-Fail Effect Translate list_to_pair_prop_fake.
-
-Definition list_to_pair_prop_fake2 : forall A (x y : A),
-    list_to_pair [x;y;y] = (x,y).
-
-Fail Effect Translate list_to_pair_prop_fake2.
-
-
+Effect Definition list_to_pair_prop_fake2 : forall A (x y : A),
+    list_to_pair [x;y;y] = (x,y) -> False.
+Proof.
+  intros E A x y H.
+  inversion H.
+Defined.
