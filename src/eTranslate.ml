@@ -952,6 +952,7 @@ let param_instance_inductive err translator env (name,name_e,name_param) (one_d,
   let args = List.map (fun i -> Vars.lift 1 i) args in
   let inner_func = applist (ind_p, args) in
   let func = mkLambda (Anonymous, ty, mkApp (inner_func, [| mkRel 1 |])) in
+  
   let body = mkApp (param_constr, [|param_ty; func|]) in
   let param_instance = it_mkLambda_or_LetIn body ctx in
   let sigma,_ = Typing.type_of env sigma param_instance in
