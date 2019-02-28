@@ -215,7 +215,7 @@ let process_inductive mib =
   | Cumulative_ind cumi ->
     let auctx = Univ.ACumulativityInfo.univ_context cumi in
     let auctx = Univ.AUContext.repr auctx in
-    Cumulative_ind_entry (Universes.univ_inf_ind_from_universe_context auctx)
+    Cumulative_ind_entry (Univ.CumulativityInfo.from_universe_context auctx)
   in
   let map mip =
     let arity, template = refresh_polymorphic_type_of_inductive (mib,mip) in

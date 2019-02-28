@@ -50,16 +50,29 @@ match A with
 | pTypeErr _ e => True
 end.
 
+Axiom Exception: Type.
+Definition Exceptionᵉ (E: Type): type E := TypeVal E E (fun e => e).
+Axiom raise: forall (A: Type), Exception -> A. 
+Definition raiseᵉ (E: Type) (A: @El E (@Typeᵉ E)) (e: @El E (Exceptionᵉ E)) := Err A e.
+
+Inductive Falseᵉ: Prop :=.
+
 Set Primitive Projections.
-Monomorphic Class ParamMod (A: Type) := {
-  param: A -> Prop
+Class ParamMod (A: Type) := {
+  param: A -> Prop;
+  param_correct: forall e, param (raise A e) -> False
 }.
 
-Monomorphic Class ParamModᵉ (E: Type) (A: @El E (@Typeᵉ E)) := {
-  paramᵉ: @El E A -> Prop
+Class ParamModᵉ (E: Type) (A: @El E (@Typeᵉ E)) := {
+  paramᵉ: @El E A -> Prop;
+  (* param_correctᵉ: forall e, paramᵉ (raiseᵉ E A e) -> (Falseᵉ E) *)
 }.
 Unset Primitive Projections.
 
+(** 
+    Providing Exception and raise construction to work on the source theory. 
+    This terms only reify the underlying exceptinal Type 
+*)
 
 (******************************)
 (*** Test handling of sorts ***)
@@ -142,7 +155,7 @@ Definition type@{i j} (E: Type@{i}) :=
 Definition sTypeVal@{i j} (E: Type@{i}) (A: Type@{j}) (f: E -> A): type@{i j} E :=
   sortType E A f.
 Definition sTypeErr@{i j} (E: Type@{i}) (e: E): type@{i j} E :=
-  sortErr E e.
+  sortErr@{i j} E e.
 
 Definition prop@{i} (E: Type@{i}) :=
   sort@{i Set} E.

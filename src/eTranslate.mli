@@ -31,6 +31,10 @@ val param_mod:   Names.MutInd.t
 val param_mod_e: Names.MutInd.t
 val param_cst:   Names.Constant.t
 val param_cst_e: Names.Constant.t
+val tm_exception: Names.Constant.t
+val tm_exception_e: Names.Constant.t
+val tm_raise: Names.Constant.t
+val tm_raise_e: Names.Constant.t
 
 val translate :
   effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
@@ -42,26 +46,6 @@ val translate_inductive :
   effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
 
-val ptranslate :
-  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
-
-val ptranslate_type :
-  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
-
-val ptranslate_inductive :
-  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
-    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
-
-val wtranslate :
-  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
-
-val wtranslate_type :
-  effect -> translator -> Environ.env -> Evd.evar_map -> EConstr.t -> Evd.evar_map * EConstr.t
-
-val wtranslate_inductive :
-  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body ->
-    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry
-
 val param_mutual_inductive :
   effect -> translator -> Environ.env -> MutInd.t * MutInd.t -> Declarations.mutual_inductive_body -> 
     Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry 
@@ -70,11 +54,6 @@ val param_instance_inductive :
   effect -> translator -> Environ.env -> MutInd.t * MutInd.t * MutInd.t-> 
     Declarations.one_inductive_body * int -> Evd.evar_map * EConstr.t * EConstr.t
 
-val wparam_mutual_inductive :
-  effect -> translator -> Environ.env -> MutInd.t-> Declarations.mutual_inductive_body -> 
-    Entries.mutual_inductive_entry -> Entries.mutual_inductive_entry 
-
-val param_definition :
-  effect -> translator -> Environ.env -> MutInd.t * MutInd.t -> 
-    Declarations.mutual_inductive_body -> 
-    Entries.mutual_inductive_entry -> Evd.evar_map * EConstr.t list
+val parametric_induction :
+  effect -> translator -> Environ.env -> MutInd.t -> Declarations.mutual_inductive_body -> 
+    Evd.evar_map * EConstr.t * EConstr.t * EConstr.t
