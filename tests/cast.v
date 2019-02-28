@@ -14,7 +14,7 @@ Effect List Translate eq eq_ind eq_rect eq_rec.
 Effect List Translate nat nat_rect nat_rec. 
 Effect List Translate list list_rect.
 Effect List Translate length eq_sym eq_trans f_equal.
-Effect List Translate sig sig_rect sig_rec.
+Effect List Translate sig sig_rect sig_rec proj1_sig.
 Effect List Translate prod prod_rect.
 
 (* basic inversion lemmas for nat *)
@@ -51,11 +51,13 @@ induction x.
 Defined.
 Effect List Translate Decidable_eq_nat.
 
-Instance EqDecidable_nat : EqDecidable nat := 
-  { eq_dec := Decidable_eq_nat }.
-
+Instance EqDecidable_nat : EqDecidable nat := { eq_dec := Decidable_eq_nat }.
 Effect List Translate EqDecidable_nat.
 
+Instance FalseDecidable : Decidable False.
+Proof. right; intros a; assumption. Defined.
+Effect Translate FalseDecidable.
+  
 Notation " ( x ; p ) " := (exist _ x p).
 
 Definition cast (A:Type) (P : A -> Prop)
@@ -64,8 +66,12 @@ Definition cast (A:Type) (P : A -> Prop)
   - exact (a ; a0).
   - exact (raise _ e).
 Defined. 
-
 Effect Translate cast.
+
+Definition forbidden_cast: False := proj2_sig (cast nat (fun _ => False) 0).
+Fail Effect Translate proj2_sig. 
+(* Due to elimination from Prop to Type *)
+(* ==> Fail Effect Translate forbidden_cast. *)
 
 Definition list2_to_pair {A} : {l : list A | length l = 2} -> A * A.
 Proof.
