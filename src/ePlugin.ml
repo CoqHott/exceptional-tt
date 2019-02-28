@@ -155,13 +155,15 @@ let solve_evars env sigma c =
   (!evdref, c)
 
 let declare_axiom id uctx ty =
-  let pe = (None, false, (ty, uctx), None) in
+  let uctx = Entries.Monomorphic_const_entry uctx in
+  let pe = (None, (ty, uctx), None) in
   let pd = Entries.ParameterEntry pe in  
   let decl = (pd, IsAssumption Definitional) in
   let cst_ = Declare.declare_constant id decl in
   cst_
 
 let declare_constant id uctx c t =
+  let uctx = Entries.Monomorphic_const_entry uctx in
   let ce = Declare.definition_entry ~types:t ~univs:uctx c in
   let cd = Entries.DefinitionEntry ce in
   let decl = (cd, IsProof Lemma) in
@@ -169,6 +171,7 @@ let declare_constant id uctx c t =
   cst_
 
 let declare_constant_wo_ty id uctx c = 
+  let uctx = Entries.Monomorphic_const_entry uctx in
   let ce = Declare.definition_entry ~univs:uctx c in
   let cd = Entries.DefinitionEntry ce in
   let decl = (cd, IsProof Lemma) in
@@ -189,7 +192,7 @@ let translate_constant err translator cst ids =
   let sigma = Evd.from_env env in
   let (sigma, typ) = ETranslate.translate_type err translator env sigma typ in
   let sigma, _ = Typing.type_of env sigma typ in
-  let body = Option.get (Global.body_of_constant cst) in
+  let body, _ = Option.get (Global.body_of_constant cst) in
   let body = EConstr.of_constr body in
   let (sigma, body) = ETranslate.translate err translator env sigma body in
   let evdref = ref sigma in
@@ -197,7 +200,7 @@ let translate_constant err translator cst ids =
   let sigma = !evdref in
   let body = EConstr.to_constr sigma body in
   let typ = EConstr.to_constr sigma typ in
-  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  let uctx = UState.context_set (Evd.evar_universe_context sigma) in
   let cst_ = declare_constant id uctx body typ in
   [ExtConstant (cst, ConstRef cst_)]
 
@@ -253,11 +256,11 @@ let typeclass_declaration err translator ind_names_decl ind_name param_ind =
   
   (* Polymorphic Axiom declaration *)
   let id = Nameops.add_suffix ind_name  "_instance" in
-  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  let uctx = UState.context_set (Evd.evar_universe_context sigma) in
   let instance_name = declare_axiom id uctx (EConstr.to_constr sigma base_instance_ty) in
   let _,dirPath,label = Constant.repr3 instance_name in
   let qualid = Libnames.make_qualid dirPath (Label.to_id label) in
-  let () = Classes.existing_instance true (Libnames.Qualid (None, qualid)) None in
+  let () = Classes.existing_instance true (CAst.make (Libnames.Qualid qualid)) None in
   (* -- *)
   
   let pid = translate_name id in
@@ -288,9 +291,9 @@ let instantiate_parametric_modality err translator (name, n) ext =
   let name_param = Global.mind_of_delta_kn kn in 
   let iter id = 
     let id_ind = Nameops.add_suffix id "_ind" in
-    let reference = Misctypes.AN (Libnames.Ident (None, id)) in
-    let scheme = Vernacexpr.InductionScheme (true, reference, Misctypes.GProp) in
-    Indschemes.do_scheme [Some (None, id_ind), scheme]
+    let reference = CAst.make @@ Misctypes.AN (CAst.make (Libnames.Ident id)) in
+    let scheme = Vernacexpr.InductionScheme (true, reference, InProp) in
+    Indschemes.do_scheme [Some (CAst.make id_ind), scheme]
   in
   let mind_names = Entries.(List.map (fun i -> i.mind_entry_typename) mind_.mind_entry_inds) in
   let () = List.iter iter mind_names in
@@ -317,11 +320,11 @@ let instantiate_parametric_modality err translator (name, n) ext =
   (* Parametrict induction *)
   let name = Declarations.(mind.mind_packets.(0).mind_typename) in
   let induction_name = Nameops.add_suffix name "_ind_param" in
-  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  let uctx = UState.context_set (Evd.evar_universe_context sigma) in
   let cst_ind = declare_axiom induction_name uctx (EConstr.to_constr sigma ind) in
 
   let induction_name_e = Nameops.add_suffix induction_name "ᵉ" in
-  let uctx = UState.context (Evd.evar_universe_context sigma) in
+  let uctx = UState.context_set (Evd.evar_universe_context sigma) in
   let ind_e = EConstr.to_constr sigma ind_e in
   let ind_e_ty = EConstr.to_constr sigma ind_e_ty in
   let cst_ind_e = declare_constant induction_name_e uctx ind_e ind_e_ty in
@@ -387,14 +390,13 @@ let implement ?exn id typ =
   let sigma = Evd.from_env env in
   let (typ, uctx) = Constrintern.interp_type env sigma typ in
   let sigma = Evd.from_ctx uctx in
-  let typ = EConstr.of_constr typ in
   let (sigma, typ) = solve_evars env sigma typ in
   let (sigma, typ_) = ETranslate.translate_type err translator env sigma typ in
   let typ = EConstr.to_constr sigma typ in
   let (sigma, _) = Typing.type_of env sigma typ_ in
   let hook _ dst =
     (** Declare the original term as an axiom *)
-    let param = (None, false, (typ, Evd.evar_context_universe_context uctx), None) in
+    let param = (None, (typ, Entries.Monomorphic_const_entry (Evd.evar_universe_context_set uctx)), None) in
     let cb = Entries.ParameterEntry param in
     let cst = Declare.declare_constant id (cb, IsDefinition Definition) in
     (** Attach the axiom to the forcing implementation *)

@@ -554,7 +554,7 @@ let name_projection_translate sigma translation_function record_builder =
 let extend_inductive env mind0 mind =
   let open Univ in
   let univs = match mind0.mind_universes with
-  | Monomorphic_ind _ -> Monomorphic_ind UContext.empty
+  | Monomorphic_ind _ -> Monomorphic_ind ContextSet.empty
   | Polymorphic_ind _ -> Polymorphic_ind AUContext.empty
   | Cumulative_ind _ -> Polymorphic_ind AUContext.empty (** FIXME *)
   in
@@ -680,7 +680,7 @@ let translate_inductive err translator env _ mind0 (mind : Entries.mutual_induct
   let params = List.map to_local_entry params in
   let uctx = UState.context (Evd.evar_universe_context sigma) in
   let univs = match mind.mind_entry_universes with
-  | Monomorphic_ind_entry _ -> Monomorphic_ind_entry uctx
+  | Monomorphic_ind_entry _ -> Monomorphic_ind_entry (Univ.ContextSet.of_context uctx)
   | Polymorphic_ind_entry _ -> Polymorphic_ind_entry uctx
   | Cumulative_ind_entry _ -> Polymorphic_ind_entry uctx (** FIXME *)
   in
@@ -893,7 +893,7 @@ let param_mutual_inductive err translator env (block, block_e) mind_d mind_e =
   let params = List.map to_local_entry params in
   let uctx = UState.context (Evd.evar_universe_context sigma) in
   let univs = match mind_e.mind_entry_universes with
-  | Monomorphic_ind_entry _ -> Monomorphic_ind_entry uctx
+  | Monomorphic_ind_entry _ -> Monomorphic_ind_entry (Univ.ContextSet.of_context uctx)
   | Polymorphic_ind_entry _ -> Polymorphic_ind_entry uctx
   | Cumulative_ind_entry _ -> Polymorphic_ind_entry uctx (** FIXME *)
   in
