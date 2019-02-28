@@ -1,127 +1,187 @@
 Require Import Weakly.Effects.
 
-Effect Definition e: Exception. Admitted. 
+Effect List Translate nat list.
 
-Inductive nat' (E: Type): Type :=
-| O': nat' E
-| S': nat' E -> nat' E
-| nat_exc: E -> nat' E.
+Definition list (A:Set) := list A.  
 
-Inductive nat_param' (E: Type): nat' E -> Prop :=
-| O'_param: nat_param' E (O' E)
-| S'_param: forall n, nat_param' E n -> nat_param' E (S' E n). 
+Effect List Translate list.
 
-
-Effect List Translate nat bool list.
 Effect List Translate False le lt gt eq not and or.
 
-Definition g: forall e, nat := fun e => raise nat e.
-Effect Translate g. Print gᵉ.
+Definition raise@{i} {A : Set} (e:Exception@{i}) := raise A e.
 
 Scheme eqᵒ_rect := Induction for eqᵒ Sort Type.
 Scheme eqᵒ_ind := Induction for eqᵒ Sort Prop.
 Scheme listᵒ_rect := Induction for listᵒ Sort Type.
 Scheme listᵒ_ind := Induction for listᵒ Sort Prop.
+Scheme natᵒ_rect := Induction for natᵒ Sort Type.
+Scheme natᵒ_ind := Induction for natᵒ Sort Prop.
 
 Scheme leᵒ_ind := Induction for leᵒ Sort Prop.
 
-Fixpoint length {A: Type} (l: list A): nat :=
-  match l with
-  | nil => 0
-  | cons _ l' => S (length l')
-  end.
+Effect List Translate list_rect nat_rect.
 
-Definition head {A: Type} (l: list A): A :=
-  match l with
-  | nil => raise A e
-  | cons a _ => a
-  end.
 
-Definition tail {A: Type} (l: list A): list A := 
-  match l with
-  | nil => raise (list A) e
-  | cons _ l' => l'
-  end.
+Effect Translate raise. 
 
-Effect List Translate length head tail.
+Effect Definition nat_catch : forall (P : nat -> Type),
+       P 0 -> (forall n, P n -> P (S n)) -> (forall e, P (raise e)) -> forall n, P n.
+Proof.
+  cbn; intros; induction n; auto.
+Defined.
+
+Effect Definition nat_catch_0_eq : forall (P : nat -> Type) P0 PS Praise,
+  nat_catch P P0 PS Praise 0 = P0. 
+Proof.
+  reflexivity.
+Defined. 
+
+Effect Definition nat_catch_S_eq : forall (P : nat -> Type) P0 PS Praise n,
+  nat_catch P P0 PS Praise (S n) = PS n (nat_catch P P0 PS Praise n). 
+Proof.
+  reflexivity.
+Defined. 
+
+Effect Definition nat_catch_raise_eq : forall (P : nat -> Type) P0 PS Praise e,
+  nat_catch P P0 PS Praise (raise e) = Praise e. 
+Proof.
+  reflexivity.
+Defined. 
+
+Effect Definition list_ind : forall A (P : list A -> Prop),
+       P nil -> (forall (a : A) (l : list A), P l -> P (a :: l)%list) -> forall l : list A, param l -> P l.
+Proof.
+  intros; induction H1; auto.
+Defined. 
+
+Effect Definition list_ind_catch : forall A (P : list A -> Prop),
+       P nil -> (forall (a : A) (l : list A), P l -> P (a :: l)%list) -> (forall e, P (raise e)) -> forall l : list A, P l.
+Proof.
+  cbn; intros; induction l; auto.
+Defined. 
+
+Effect Definition list_catch : forall A (P : list A -> Type),
+       P nil -> (forall (a : A) (l : list A), P l -> P (a :: l)%list) -> (forall e, P (raise e)) -> forall l : list A, P l.
+Proof.
+  cbn; intros; induction l; auto.
+Defined.
+
+Effect Definition list_catch_nil_eq : forall A (P : list A -> Type) Pnil Pcons Praise,
+  list_catch A P Pnil Pcons Praise nil = Pnil. 
+Proof.
+  reflexivity.
+Defined. 
+
+Effect Definition list_catch_cons_eq : forall A (P : list A -> Type) Pnil Pcons Praise a l,
+  list_catch A P Pnil Pcons Praise (cons a l) = Pcons a l (list_catch A P Pnil Pcons Praise l). 
+Proof.
+  reflexivity.
+Defined. 
+
+Effect Definition list_catch_raise_eq : forall A (P : list A -> Type) Pnil Pcons Praise e,
+  list_catch A P Pnil Pcons Praise (raise e) = Praise e. 
+Proof.
+  reflexivity.
+Defined. 
+
+Effect Definition list_rect_raise_eq : forall A (P : list A -> Set) Pnil Pcons e,
+  list_rect P Pnil Pcons (raise e) = raise e. 
+Proof.
+  reflexivity.
+Defined.
+
+(* Now comes the real work in the coq/rett*)
+
+Effect Definition e: Exception. Admitted. 
+
+Definition length {A} (l: list A): nat := list_rect (fun _ => nat) 0 (fun _ _ n => S n) l.
+
+Definition head {A} (l: list A): A := list_rect (fun _ => A) (raise e) (fun a _ _ => a) l.
+
+Definition tail {A} (l: list A): list A := list_rect (fun _ => list A) (raise e) (fun _ l _ => l) l.
+
+Effect List Translate length tail head.
 
 (* Expected theorem *)
-Effect Definition non_empty_list_distinct_error: forall (A: Type) (l: list A),
-    length l > 0 -> tail l <> raise _ e.
+
+Definition nil_not_raise: forall (A:Set) e,
+    @nil A <> raise e.
 Proof.
-  simpl; intros E A l Hl Htail.
-  induction l; simpl in *.
-  - inversion Hl.
-  - destruct l; try inversion Htail.
-    + inversion Hl. inversion H1.
-  - inversion Hl.
+  intros A e. 
+  assert (forall l', @nil A = l' -> (list_catch _ (fun _ => Prop) True (fun _ _ _ => False) (fun  _ => False) l')).
+  - intros l' eq. destruct eq. rewrite list_catch_nil_eq. exact I.
+  - intro eq. specialize  (H (raise e) eq). rewrite list_catch_raise_eq in H. exact H. 
+Defined. 
+
+(* Effect Translate nil_not_raise. *)
+
+Definition cons_not_raise: forall A (l: list A) a e,
+    (cons a l) <> raise e.
+Proof.
+  intros A l a e. 
+  assert (forall l', (cons a l) = l' -> (list_catch _ (fun _ => Prop) False (fun _ _ _ => True) (fun  _ => False) l')).
+  - intros l' eq. destruct eq. rewrite list_catch_cons_eq. exact I.
+  - intro eq. specialize  (H (raise e) eq). rewrite list_catch_raise_eq in H. exact H. 
+Defined. 
+
+(* Effect Translate cons_not_raise. *)
+
+Definition raise_not_leq : forall (n:nat) e,
+    n <= raise e -> False.
+Proof.
+  intros n e leq. 
+  assert (forall n', n <= n' -> (nat_catch (fun _ => Prop) True (fun _ _ => True) (fun  _ => False) n')).
+  - clear leq e. intros l' leq. destruct leq. destruct n. rewrite nat_catch_0_eq. exact I.
+    rewrite nat_catch_S_eq. exact I. rewrite nat_catch_S_eq. exact I.
+  - specialize  (H (raise e) leq). rewrite nat_catch_raise_eq in H. exact H. 
+Defined. 
+
+(* Effect Translate raise_not_leq. *)
+
+Definition non_empty_list_distinct_error: forall A (l: list A) n,
+    length l >= n -> l <> raise e.
+Proof.
+  intros A l n; refine (list_catch _ (fun l => length l >= n -> l <> raise e) _ _ _ l); cbn.
+  - intros. apply nil_not_raise.
+  - intros. apply cons_not_raise.
+  - intros e H. unfold length in H. rewrite list_rect_raise_eq in H.
+    compute in H. destruct (raise_not_leq  _ _ H).
 Defined.
 
-(* Under this translation is not allowed *)
-Definition non_valid_theorem: forall (A: Type) (l: list A),
-    length l > 0 -> tail l = raise _ e := raise _ e.
+
+Definition non_empty_list_distinct_tail_error: forall A (l: list A),
+    length l > 0 -> tail l <> raise e.
+Proof.
+  intros A l; refine (list_ind_catch _ (fun l => length l > 0 -> tail l <> raise e) _ _ _ l); cbn.
+  - inversion 1.
+  - intros. apply le_S_n in H0. intro e. eapply raise_not_leq. rewrite e in H0.
+    rewrite list_rect_raise_eq in H0. exact H0.
+  - intros. unfold length in H. rewrite list_rect_raise_eq in H. compute in H.
+    destruct (raise_not_leq _ _ H). 
+Defined. 
+
+(* Check that proving with raise is not allowed *)
+Definition non_valid_theorem: forall A (l: list A),
+    length l > 0 -> tail l = raise e := raise e.
 Fail Effect Translate non_valid_theorem.
 
-Effect Definition non_empty_list_distinct_error_param: forall (A: Type) (l: list A),
-    length l > 0 -> param l -> tail l <> raise _ e.
+Definition list_param_deep: forall {A} {H: ParamMod A} (l: list A), Prop.
 Proof.
-  simpl; intros E A l Hl Hparam Htail.
-  induction Hparam.
-  - inversion Hl.
-  - destruct l; inversion Htail.
-    +  inversion Hl. inversion H1. 
-Defined.
+  intros A H l. refine (list_catch _ _ _ _ _ l).
+  - exact True.
+  - intros a l' lind. exact (param a /\ lind).
+  - intro e. exact False. 
+Defined. 
 
-(* Not true for head *)
-Effect Definition non_empty_list_distinct_error_param: forall (A: Type) (l: list A),
-    length l > 0 -> param l -> head l = raise _ e \/ head l <> raise _ e.
+Definition head_empty_list_no_error: forall A {H: ParamMod A } (l: list A),
+    length l > 0 -> list_param_deep l -> head l <> raise e.
 Proof.
-  simpl; intros E A l Hl Hparam.
-  destruct l eqn: Hlist.
-  - inversion Hl.
-  - simpl in *. subst.
-Abort.
-
-Effect Definition length_implies_param_list: forall (A: Type) (l: list A),
-    length l > 0 -> param l.
-Proof.
-  intros E A l H.
-  induction l. 
-  - constructor. 
-  - destruct l.
-    + constructor. constructor.
-    + simpl in *. constructor. apply IHl.
-      inversion H.
-      apply H1.
-    + simpl in H. inversion H; subst. inversion H1.
-  - inversion H.
-Defined.
-
-Effect Definition param_error_false: forall A, param (raise (list A) e) -> False.
-Proof.
-  simpl. intros E A Hp.
-  inversion Hp.
-Defined.
-
-Effect Definition list_param_deep: forall {A: Type} {H: ParamMod A} (l: list A), Prop.
-Proof.
-  intros E A H l.
-  destruct l.
-  - exact (list_param E A (nilᵉ E A)).
-  - exact (paramᵉ e0 /\ (list_param E A (consᵉ E A e0 l))).
-  - exact (Falseᵒ E).
-Defined. Print list_param_deepᵉ.
-
-Effect Definition param_correctnes: forall (A: Type) (H: ParamMod A) e, param (raise A e) -> False.
-Proof. Admitted.
-
-Effect Definition head_empty_list_no_error: forall A {H: ParamMod A } (l: list A),
-    length l > 0 -> list_param_deep A H l -> head l <> raise _ e.
-Proof.
-  intros E A A_param l Hlength list_deep_param Hhead.
-  destruct l.
-  - inversion Hlength.
-  - inversion list_deep_param.
-    inversion Hhead. simpl in *; subst. exact (param_correctnesᵉ E A A_param (eᵉ E) H).
-  - inversion Hlength.
-Defined.
+  intros A A_param l.
+  refine (list_ind_catch _ (fun l => length l > 0 -> list_param_deep l -> head l <> raise e) _ _ _ l); cbn. 
+  - inversion 1.
+  - clear l. intros a l Hind Hlength Hl. unfold list_param_deep in Hl.
+    rewrite list_catch_cons_eq in Hl.
+    destruct Hl as [Ha _]. intro eq. rewrite eq in Ha. apply (param_correct e Ha).
+  - intros. unfold length in H. rewrite list_rect_raise_eq in H. compute in H.
+    destruct (raise_not_leq _ _ H). 
+Defined. 
