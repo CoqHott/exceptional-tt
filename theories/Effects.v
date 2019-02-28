@@ -155,7 +155,7 @@ Definition type@{i j} (E: Type@{i}) :=
 Definition sTypeVal@{i j} (E: Type@{i}) (A: Type@{j}) (f: E -> A): type@{i j} E :=
   sortType E A f.
 Definition sTypeErr@{i j} (E: Type@{i}) (e: E): type@{i j} E :=
-  sortErr E e.
+  sortErr@{i j} E e.
 
 Definition prop@{i} (E: Type@{i}) :=
   sort@{i Set} E.
