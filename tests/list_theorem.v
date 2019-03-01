@@ -102,6 +102,8 @@ Defined.
 
 Definition length {A} (l: list A) : nat := list_rect (fun _ => nat) 0 (fun _ _ n => S n) l.
 
+(* Note that contrarily to the example in the paper, we define head and tail functions parametric in the error they raise *)
+
 Definition head {A} (l: list A) e : A := list_rect (fun _ => A) (raise _ e) (fun a _ _ => a) l.
 
 Definition tail {A} (l: list A) e : list A := list_rect (fun _ => list A) (raise _ e) (fun _ l _ => l) l.
