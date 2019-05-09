@@ -58,14 +58,13 @@ Definition raiseᵉ (E: Type) (A: @El E (@Typeᵉ E)) (e: @El E (Exceptionᵉ E)
 Inductive Falseᵉ: Prop :=.
 
 Set Primitive Projections.
-Class ParamMod (A: Type) := {
+Class Param (A: Type) := {
   param: A -> Prop;
-  param_correct: forall e, param (raise A e) -> False
 }.
 
-Class ParamModᵉ (E: Type) (A: @El E (@Typeᵉ E)) := {
+Class Paramᵉ (E: Type) (A: @El E (@Typeᵉ E)) := {
   paramᵉ: @El E A -> Prop;
-  (* param_correctᵉ: forall e, paramᵉ (raiseᵉ E A e) -> (Falseᵉ E) *)
+  (* param_correctᵉ: forall e, paramᵉ (raiseᵉ E A e) -> Falseᵉ *)
 }.
 Unset Primitive Projections.
 
