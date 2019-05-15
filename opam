@@ -1,8 +1,8 @@
 opam-version: "1.2"
 name: "coq-exceptional-tt"
 version: "0.1"
-maintainer: "Pierre-Marie Pédrot <pierre-marie.pedrot@irif.fr>"
-author: "Pierre-Marie Pédrot <pierre-marie.pedrot@irif.fr>"
+maintainer: "Pierre-Marie Pédrot <pierre-marie.pedrot@inria.fr>"
+author: "Pierre-Marie Pédrot <pierre-marie.pedrot@inria.fr>"
 license: "WTFPL 2.0"
 homepage: "https://github.com/CoqHott/exceptional-tt"
 dev-repo: "https://github.com/CoqHott/exceptional-tt.git"
@@ -12,5 +12,6 @@ build: [
 install: [make "install"]
 remove: [make "uninstall"]
 depends: [
-  "coq" { >= "8.7" & < "8.8" }
+  "coq" { >= "8.8" & < "8.9" }
 ]
+synopsis: "Implementation of the Reasonably Exceptional Type Theory in Coq"
