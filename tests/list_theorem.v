@@ -1,4 +1,4 @@
-Require Import Exception.Effects.
+Require Import Weakly.Effects.
 
 Require Import Tests.utils.
 
