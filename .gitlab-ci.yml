@@ -1,0 +1,12 @@
+image: docker:stable
+services:
+  - docker:dind
+
+variables:
+  IMAGE: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
+docker:
+  script:
+    - docker login -u gitlab-ci-token -p "$CI_JOB_TOKEN" "$CI_REGISTRY"
+    - docker build --pull -t "$IMAGE" .
+    - docker push "$IMAGE"
