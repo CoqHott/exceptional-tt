@@ -64,7 +64,6 @@ Class Param (A: Type) := {
 
 Class Paramᵉ (E: Type) (A: @El E (@Typeᵉ E)) := {
   paramᵉ: @El E A -> Prop;
-  (* param_correctᵉ: forall e, paramᵉ (raiseᵉ E A e) -> Falseᵉ *)
 }.
 Unset Primitive Projections.
 
