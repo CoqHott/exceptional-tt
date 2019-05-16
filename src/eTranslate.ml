@@ -95,8 +95,8 @@ let prod_e = ConstRef (Constant.make1 (make_kn "Prodᵉ"))
 let err_e = ConstRef (Constant.make1 (make_kn "Err"))
 let typeval_e = ConstructRef ((MutInd.make1 (make_kn "type"), 0), 1)
 
-let param_mod = MutInd.make1 (make_kn "ParamMod")
-let param_mod_e = MutInd.make1 (make_kn "ParamModᵉ")
+let param_mod = MutInd.make1 (make_kn "Param")
+let param_mod_e = MutInd.make1 (make_kn "Paramᵉ")
 
 let param_cst = Constant.make1 (make_kn "param")
 let param_cst_e = Constant.make1 (make_kn "paramᵉ")
