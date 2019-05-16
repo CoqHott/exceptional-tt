@@ -1,6 +1,29 @@
 Require Import Weakly.Effects.
 
-Require Import Tests.utils.
+Inductive nat@{i} : Type@{i} :=
+  O : nat | S : nat -> nat.
+
+Notation "0" := O.
+
+Inductive le : nat -> nat -> Prop :=
+    le_00 : le 0 0
+  | le_0S : forall n, le 0 (S n)
+  | le_S : forall n m : nat, le n m -> le (S n) (S m).
+
+Infix "<=" := le.
+
+Definition lt n m := S n <= m.
+
+Infix "<" := lt.
+
+Definition gt (n m:nat) := m < n.
+
+Infix ">" := gt.
+
+Definition le_S_n : forall n m : nat, S n <= S m -> n <= m.
+Proof.
+  intros n m e. inversion e. assumption.
+Defined.
 
 Open Scope list. 
 
@@ -182,7 +205,7 @@ Defined.
 
 Effect Translate S_not_zero.
 
-Effect Definition le_S_n : forall n m : nat, S n <= S m -> n <= m.
+Effect Definition le_S_n' : forall n m : nat, S n <= S m -> n <= m.
 intros. inversion H. auto. 
 Defined. 
 
@@ -201,8 +224,8 @@ Effect Translate non_empty_list_distinct_error.
 Lemma onebiggerzero : S 0 <= 0 -> False.
   assert (forall n m, n <= m -> (nat_catch (fun _ => Prop) True (fun _ _ => m = 0 -> False) (fun  _ => m = 0) n)). 
   - intros n m leq. induction leq. rewrite nat_catch_0_eq. exact I.
-    rewrite nat_catch_0_eq. exact I. rewrite nat_catch_S_eq. intro e. 
-    induction (S_not_zero _ e).
+    rewrite nat_catch_0_eq. exact I.
+    rewrite nat_catch_S_eq. intro e. induction (S_not_zero _ e).
   - intro leq. specialize (H (S 0) 0 leq).
     rewrite nat_catch_S_eq in H. exact (H eq_refl). 
 Defined. 
@@ -214,7 +237,7 @@ Lemma non_empty_list_distinct_tail_error: forall A e (l: list A),
 Proof.
   intros A e l; induction l using list_catch_prop; cbn. 
   - intro absurd; induction (onebiggerzero absurd).
-  - intros Hlength eq. apply le_S_n in Hlength. eapply raise_not_leq.
+  - intros Hlength eq. apply le_S_n' in Hlength. eapply raise_not_leq.
     rewrite eq in Hlength.
     rewrite list_rect_raise_eq in Hlength. exact Hlength.
   - intros Hlength. unfold length in Hlength. rewrite list_rect_raise_eq in Hlength. 
