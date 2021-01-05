@@ -80,6 +80,15 @@ postulate cast-Unit : cast ⊤ ⊤ tt ≡ tt
 
 {- non-diagonal cases -}
 
+postulate cast-Set-bad : (A : Set (lsuc ℓ)) → cast (Set (lsuc ℓ)) (Set ℓ) A ≡ raise _
+
+{-# REWRITE cast-Set-bad #-}
+
+postulate cast-raise :  ∀ ℓ ℓ₁ → (A : Set ℓ₁) → cast (raise {ℓ = lsuc ℓ} (Set ℓ)) A (raise _) ≡ raise _
+
+{-# REWRITE cast-raise #-}
+
+
 postulate cast-Pi-Sigma : (A A' : Set ℓ) (B : A → Set ℓ₁) (B' : A' → Set ℓ₁) (f : (a : A) → B a)  →
                     cast ((a : A) → B a) (Σ {a = ℓ} {b = ℓ₁} A' B') f ≡ raise (Σ A' B')
 
@@ -90,7 +99,9 @@ postulate cast-Pi-Nat : (A : Set ℓ) (B : A → Set ℓ₁) (f : (a : A) → B 
 
 {-# REWRITE cast-Pi-Nat #-}
 
-postulate cast-Pi-set : (A : Set ℓ) (B : A → Set ℓ₁) (f : ((a : A) → B a)) →
+{- Rules specific to Unk -}
+
+postulate cast-Pi-Unk : (A : Set ℓ) (B : A → Set ℓ₁) (f : ((a : A) → B a)) →
                         cast ((a : A) → B a) (Unk (ℓ ⊔ ℓ₁)) f ≡ box ((a : A) → B a) f
 
 postulate cast-Unk : (A : Set ℓ) (B : Set ℓ₁) (f : A) →
@@ -99,23 +110,12 @@ postulate cast-Unk : (A : Set ℓ) (B : Set ℓ₁) (f : A) →
 postulate cast-Pi-Unk-bad : (f : Unk ℓ → Unk ℓ₁) →
                             cast (Unk ℓ → Unk ℓ₁) (Unk (ℓ ⊔ ℓ₁)) f ≡ raise _
 
+{-# REWRITE cast-Pi-Unk cast-Unk cast-Pi-Unk-bad #-}
 
-{-# REWRITE cast-Pi-set cast-Unk cast-Pi-Unk-bad #-}
-
-postulate cast-Sigma-set : (A : Set ℓ) (B : A → Set ℓ₁) (x : Σ {a = ℓ} {b = ℓ₁} A B) →
+postulate cast-Sigma-Unk : (A : Set ℓ) (B : A → Set ℓ₁) (x : Σ {a = ℓ} {b = ℓ₁} A B) →
                         cast (Σ A B) (Unk _) x ≡ box (Σ A B) x
 
-postulate cast-set-Sigma : (A A' : Set ℓ) (B : A → Set ℓ₁) (B' : A' → Set ℓ₁) (s : Σ {a = ℓ} {b = ℓ₁} A' B') → 
-                           cast (Unk _) (Σ {a = ℓ} {b = ℓ₁} A B) (box (Σ A' B') s) ≡ cast (Σ A' B') (Σ A B) s
-
-
-{-# REWRITE cast-Sigma-set cast-set-Sigma #-}
-
-postulate cast-set-bad : (A : Set (lsuc ℓ)) → cast (Set (lsuc ℓ)) (Set ℓ) A ≡ raise _
-
-postulate cast-raise :  ∀ ℓ ℓ₁ → (A : Set ℓ₁) → cast (raise {ℓ = lsuc ℓ} (Set ℓ)) A (raise _) ≡ raise _
-
-{-# REWRITE cast-set-bad cast-raise #-}
+{-# REWRITE cast-Sigma-Unk #-}
 
 proj : {A : Set ℓ₁} → Unk ℓ → A
 proj {ℓ₁} {ℓ} {A} (box A' a') = cast {ℓ = ℓ} {ℓ₁ = ℓ₁} A' A a' 
