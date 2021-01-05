@@ -58,5 +58,13 @@ postulate catch-nat-raise : (P : Nat → Set ℓ) (P0 : P 0) (PS : (n : Nat) →
 {-# REWRITE catch-nat-suc #-}
 {-# REWRITE catch-nat-raise #-}
 
+record Unk ℓ : Set (lsuc ℓ) where
+  constructor box
+  field
+    type : Set ℓ
+    elem : type
 
+postulate raise-Unk :  ∀ ℓ → raise (Unk ℓ) ≡ box (raise (Set ℓ)) (raise _)
+
+{-# REWRITE raise-Unk #-}
 

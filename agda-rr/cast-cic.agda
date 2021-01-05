@@ -90,20 +90,6 @@ postulate cast-Pi-Nat : (A : Set ℓ) (B : A → Set ℓ₁) (f : (a : A) → B 
 
 {-# REWRITE cast-Pi-Nat #-}
 
-record Unk ℓ : Set (lsuc ℓ) where
-  constructor box
-  field
-    type : Set ℓ
-    elem : type
-
-proj : {A : Set ℓ₁} → Unk ℓ → A
-proj {ℓ₁} {ℓ} {A} (box A' a') = cast {ℓ = ℓ} {ℓ₁ = ℓ₁} A' A a' 
-
--- this rewrite rule is not accepted by Agda because lsuc is not a pattern
-postulate raise-Unk :  ∀ ℓ → raise (Unk ℓ) ≡ box (raise (Set ℓ)) (raise _)
-
-{-# REWRITE raise-Unk #-}
-
 postulate cast-Pi-set : (A : Set ℓ) (B : A → Set ℓ₁) (f : ((a : A) → B a)) →
                         cast ((a : A) → B a) (Unk (ℓ ⊔ ℓ₁)) f ≡ box ((a : A) → B a) f
 
@@ -130,6 +116,9 @@ postulate cast-set-bad : (A : Set (lsuc ℓ)) → cast (Set (lsuc ℓ)) (Set ℓ
 postulate cast-raise :  ∀ ℓ ℓ₁ → (A : Set ℓ₁) → cast (raise {ℓ = lsuc ℓ} (Set ℓ)) A (raise _) ≡ raise _
 
 {-# REWRITE cast-set-bad cast-raise #-}
+
+proj : {A : Set ℓ₁} → Unk ℓ → A
+proj {ℓ₁} {ℓ} {A} (box A' a') = cast {ℓ = ℓ} {ℓ₁ = ℓ₁} A' A a' 
 
 delta : Unk ℓ → Unk ℓ
 delta {ℓ} x = proj {A = Unk ℓ → Unk ℓ} x x
