@@ -84,7 +84,7 @@ postulate cast-Bool-true : cast Bool Bool true ≡ true
 postulate cast-Bool-false : cast Bool Bool false ≡ false
 
 postulate cast-Bool-raise : cast Bool Bool (raise Bool) ≡ raise Bool
-
+  
 postulate cast-Bool-unk : cast Bool Bool (unk Bool) ≡ unk Bool
 
 {-# REWRITE cast-Bool-true cast-Bool-false cast-Bool-raise cast-Bool-unk #-}
@@ -126,14 +126,14 @@ postulate cast-Pi-Nat : (A : Set ℓ) (B : A → Set ℓ₁) (f : (a : A) → B 
    but we need to split it off for rewriting.
    Making it private so that the only closed  values we can create in Unk ℓ come from cast -}
 private
-  postulate unk-cast : ∀ ℓ₁ (A : Set ℓ) → A → Unk ℓ₁
+  postulate unk-cast : ∀ (A : Set ℓ) → A → Unk (lsuc ℓ)
 
 postulate cast-Unk : (A : Set ℓ) (B : Set ℓ₁) (f : A) →
-                        cast (Unk ℓ) B (unk-cast ℓ A f) ≡ cast A B f
+                        cast (Unk (lsuc ℓ)) B (unk-cast A f) ≡ cast A B f
 {-# REWRITE cast-Unk #-}
 
 postulate cast-Pi-Unk : (A : Set ℓ) (B : A → Set ℓ₁) (f : ((a : A) → B a)) →
-                        cast ((a : A) → B a) (Unk (ℓ ⊔ ℓ₁)) f ≡  unk-cast (ℓ ⊔ ℓ₁) (Unk ℓ → Unk ℓ₁) (cast ((a : A) → B a) (Unk ℓ → Unk ℓ₁) f)
+                        cast ((a : A) → B a) (Unk (lsuc (ℓ ⊔ ℓ₁))) f ≡  unk-cast (Unk ℓ → Unk ℓ₁) (cast ((a : A) → B a) (Unk ℓ → Unk ℓ₁) f)
 
 
 {-# REWRITE cast-Pi-Unk #-}
@@ -143,9 +143,10 @@ postulate cast-Pi-Unk : (A : Set ℓ) (B : A → Set ℓ₁) (f : ((a : A) → B
 -- {-# REWRITE cast-Pi-Unk-bad #-}
 
 postulate cast-Sigma-Unk : (A : Set ℓ) (B : A → Set ℓ₁) (x : Σ {a = ℓ} {b = ℓ₁} A B) →
-                        cast (Σ A B) (Unk (ℓ ⊔ ℓ₁)) x ≡ unk-cast (ℓ ⊔ ℓ₁) (_×_ {a = ℓ} {b = ℓ₁} (Unk ℓ) (Unk ℓ₁)) (cast (Σ A B) (Unk ℓ × Unk ℓ₁) x)
+                        cast (Σ A B) (Unk (lsuc (ℓ ⊔ ℓ₁))) x ≡ unk-cast (_×_ {a = ℓ} {b = ℓ₁} (Unk ℓ) (Unk ℓ₁)) (cast (Σ A B) (Unk ℓ × Unk ℓ₁) x)
 
 {-# REWRITE cast-Sigma-Unk #-}
+
 
 delta : Unk ℓ → Unk ℓ
 delta {ℓ} x = cast (Unk ℓ) (Unk ℓ → Unk ℓ) x x
