@@ -132,15 +132,20 @@ postulate cast-Unk : (A : Set ℓ) (B : Set ℓ₁) (f : A) →
                         cast (Unk (lsuc ℓ)) B (unk-cast A f) ≡ cast A B f
 {-# REWRITE cast-Unk #-}
 
+postulate cast-Unk-raise : ∀ ℓ → (B : Set ℓ₁)  →
+                           cast (Unk ℓ) B (raise _) ≡ raise _
+{-# REWRITE cast-Unk-raise #-}
+
 postulate cast-Pi-Unk : (A : Set ℓ) (B : A → Set ℓ₁) (f : ((a : A) → B a)) →
                         cast ((a : A) → B a) (Unk (lsuc (ℓ ⊔ ℓ₁))) f ≡  unk-cast (Unk ℓ → Unk ℓ₁) (cast ((a : A) → B a) (Unk ℓ → Unk ℓ₁) f)
 
 
 {-# REWRITE cast-Pi-Unk #-}
--- postulate cast-Pi-Unk-bad : (f : Unk ℓ → Unk ℓ₁) →
---                             cast (Unk ℓ → Unk ℓ₁) (Unk (ℓ ⊔ ℓ₁)) f ≡ raise _
 
--- {-# REWRITE cast-Pi-Unk-bad #-}
+postulate cast-Pi-Unk-bad : (f : Unk ℓ → Unk ℓ₁) →
+                            cast (Unk ℓ → Unk ℓ₁) (Unk (ℓ ⊔ ℓ₁)) f ≡ raise _
+
+{-# REWRITE cast-Pi-Unk-bad #-}
 
 postulate cast-Sigma-Unk : (A : Set ℓ) (B : A → Set ℓ₁) (x : Σ {a = ℓ} {b = ℓ₁} A B) →
                         cast (Σ A B) (Unk (lsuc (ℓ ⊔ ℓ₁))) x ≡ unk-cast (_×_ {a = ℓ} {b = ℓ₁} (Unk ℓ) (Unk ℓ₁)) (cast (Σ A B) (Unk ℓ × Unk ℓ₁) x)
