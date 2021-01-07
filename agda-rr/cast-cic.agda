@@ -136,7 +136,7 @@ postulate cast-Unk-raise : ∀ ℓ → (B : Set ℓ₁)  →
                            cast (Unk ℓ) B (raise _) ≡ raise _
 {-# REWRITE cast-Unk-raise #-}
 
-postulate cast-Pi-Unk : (A : Set ℓ) (B : A → Set ℓ₁) (f : ((a : A) → B a)) →
+postulate cast-Pi-Unk : (A : Set ℓ) (B : A → Set ℓ₁) (f : (a : A) → B a) →
                         cast ((a : A) → B a) (Unk (lsuc (ℓ ⊔ ℓ₁))) f ≡  unk-cast (Unk ℓ → Unk ℓ₁) (cast ((a : A) → B a) (Unk ℓ → Unk ℓ₁) f)
 
 
@@ -159,3 +159,34 @@ delta {ℓ} x = cast (Unk ℓ) (Unk ℓ → Unk ℓ) x x
 omega : Unk ℓ
 omega {ℓ} = delta {ℓ = ℓ} (cast (Unk ℓ → Unk ℓ) (Unk ℓ) (delta {ℓ = ℓ}))
 
+foo : Unk (lsuc lzero)
+foo = cast (Nat → Nat → Nat) (Unk _) _+_
+
+postulate cast-Nat-Unk : (n : Nat) → cast Nat (Unk (lsuc lzero)) n ≡ unk-cast Nat n
+
+record i (A : Set ℓ) : Set (ℓ ⊔ ℓ₁) where
+  constructor inj
+  field
+    uninj : A
+
+open i public
+
+postulate cast-Nat-Unk' : (n : Nat) → cast (i {ℓ = ℓ} {ℓ₁ = ℓ₁} Nat) (Unk (lsuc ℓ)) (inj n) ≡ unk-cast Nat n
+
+postulate cast-Nat-iNat : (n : Nat) → cast Nat (i {ℓ = ℓ} {ℓ₁ = ℓ₁} Nat) n ≡ inj n
+
+{-# REWRITE cast-Nat-Unk cast-Nat-Unk' cast-Nat-iNat #-}
+
+retr : (A : Set ℓ) (a : A) → A
+retr {ℓ} A a = cast (Unk (lsuc ℓ)) A (cast A (Unk (lsuc ℓ)) a)
+
+retr-0 : retr {lzero} Nat 0 ≡ 0
+retr-0 = refl
+
+
+
+retr-arr : (A : Set ℓ) (a : A) → A
+retr-arr {ℓ} A = retr (A → A) (λ a → a)
+
+zero' : Nat
+zero' = uninj (retr-arr {lsuc lzero} (i {ℓ₁ = lsuc lzero} Nat) (inj 0))
